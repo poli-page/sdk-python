@@ -124,7 +124,7 @@ If you change the workflow, the change MUST stay compatible with this auto-skip 
 - **Lint / format**: ruff (lint + format)
 - **Manifest file**: `pyproject.toml`
 - **Run tests locally**: `pytest`
-- **Run lint locally**: `ruff check . __LINT_COMMAND____LINT_COMMAND__ ruff format --check .`
+- **Run lint locally**: `ruff check . && ruff format --check .`
 
 ---
 
