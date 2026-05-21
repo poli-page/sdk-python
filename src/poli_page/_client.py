@@ -15,9 +15,13 @@ import uuid
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from types import TracebackType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
+
+if TYPE_CHECKING:
+    from poli_page._documents import DocumentsSync
+    from poli_page._render import RenderSync
 
 from poli_page._constants import (
     DEFAULT_BASE_URL,

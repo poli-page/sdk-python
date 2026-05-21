@@ -53,6 +53,38 @@ pattern = '__version__ = "(?P<version>[^"]+)"'
 [tool.hatch.build.targets.wheel]
 packages = ["src/poli_page"]
 
+[tool.hatch.build.targets.sdist]
+# Keep the source tarball minimal — code, tests, docs, and the demo for
+# reproducibility; exclude repo-internal tooling.
+include = [
+    "/src",
+    "/tests",
+    "/demo",
+    "/scripts",
+    "/.github/workflows/ci.yml",
+    "/.github/workflows/publish.yml",
+    "/.github/workflows/codeql.yml",
+    "/.github/workflows/docs.yml",
+    "/.github/workflows/integration.yml",
+    "/.github/dependabot.yml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/MIGRATION.md",
+    "/SECURITY.md",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/.gitignore",
+]
+exclude = [
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/.DS_Store",
+    "**/.gitkeep",
+    "demo/output-sync/",
+    "demo/output-async/",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

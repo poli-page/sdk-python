@@ -17,9 +17,13 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from types import TracebackType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
+
+if TYPE_CHECKING:
+    from poli_page._documents import DocumentsAsync
+    from poli_page._render import RenderAsync
 
 from poli_page._constants import (
     DEFAULT_BASE_URL,
