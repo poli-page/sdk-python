@@ -21,6 +21,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.ruff_cache/
 .pytest_cache/
 .tox/
 
@@ -37,3 +38,8 @@ bin/
 # Env
 .env
 .env.local
+
+# Local-only handoff docs (live in sdk-node or the platform repo)
+sdk-python-plan.md
+sdk-engineering-guide.md
+sdk-roadmap.md

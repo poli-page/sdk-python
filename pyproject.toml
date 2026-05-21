@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "poli-page"
+dynamic = ["version"]
+description = "Poli Page SDK for Python — render PDFs from HTML templates via the Poli Page API"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Poli Page" }]
+keywords = ["pdf", "html", "template", "rendering", "poli-page"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.25,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.6",
+    "pyright>=1.1",
+    "mypy>=1.10",
+    "build>=1",
+]
+
+[project.urls]
+Homepage = "https://poli.page"
+Documentation = "https://docs.poli.page/reference/sdk/python/"
+Source = "https://github.com/poli-page/sdk-python"
+Issues = "https://github.com/poli-page/sdk-python/issues"
+
+[tool.hatch.version]
+source = "regex"
+path = "src/poli_page/_version.py"
+pattern = '__version__ = "(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/poli_page"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: hits the live API; requires POLI_PAGE_API_KEY"]
