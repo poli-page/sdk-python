@@ -73,9 +73,12 @@ reportUnknownArgumentType = "none"
 reportUnknownVariableType = "none"
 reportUnknownMemberType = "none"
 reportUnknownParameterType = "none"
+reportUnknownLambdaType = "none"
 reportUntypedFunctionDecorator = "none"
 reportMissingTypeStubs = "none"
 reportMissingImports = "none"
+reportPrivateUsage = "none"
+reportUnusedFunction = "none"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,4 +1,5 @@
 from poli_page import error_codes
+from poli_page._client import PoliPage
 from poli_page._errors import (
     APIConnectionError,
     APIStatusError,
@@ -15,6 +16,17 @@ from poli_page._errors import (
     UnprocessableEntityError,
 )
 from poli_page._version import __version__
+from poli_page.types import (
+    Environment,
+    InlineModeInput,
+    Orientation,
+    PageFormat,
+    PreviewResult,
+    ProjectModeInput,
+    RenderInput,
+    RenderMetadata,
+    RetryEvent,
+)
 
 __all__ = [
     "APIConnectionError",
@@ -23,12 +35,22 @@ __all__ = [
     "AuthenticationError",
     "BadRequestError",
     "ConflictError",
+    "Environment",
     "GoneError",
+    "InlineModeInput",
     "InternalServerError",
     "NotFoundError",
+    "Orientation",
+    "PageFormat",
     "PermissionDeniedError",
+    "PoliPage",
     "PoliPageError",
+    "PreviewResult",
+    "ProjectModeInput",
     "RateLimitError",
+    "RenderInput",
+    "RenderMetadata",
+    "RetryEvent",
     "UnprocessableEntityError",
     "__version__",
     "error_codes",
