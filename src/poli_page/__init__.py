@@ -17,6 +17,7 @@ from poli_page._errors import (
 )
 from poli_page._version import __version__
 from poli_page.types import (
+    DocumentDescriptor,
     Environment,
     InlineModeInput,
     Orientation,
@@ -35,6 +36,7 @@ __all__ = [
     "AuthenticationError",
     "BadRequestError",
     "ConflictError",
+    "DocumentDescriptor",
     "Environment",
     "GoneError",
     "InlineModeInput",

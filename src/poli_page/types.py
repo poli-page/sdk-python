@@ -9,10 +9,13 @@ Enums use `Literal[...]` so callers can pass string literals; equivalent
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from typing import Any, Literal, NotRequired, Required, TypedDict
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, Required, TypedDict
 
 from poli_page._errors import PoliPageError
+
+if TYPE_CHECKING:
+    from poli_page._client import PoliPage
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -83,6 +86,55 @@ class PreviewResult:
     html: str
     total_pages: int
     environment: Environment
+
+
+@dataclass(slots=True, kw_only=True)
+class DocumentDescriptor:
+    """Stored document returned by `render.document` and `documents.get` (spec §6).
+
+    All wire fields are exposed as snake_cased attributes. `download_pdf()`
+    fetches the bytes from `presigned_pdf_url` on demand — the URL has a
+    15-minute TTL; if it expired, refresh via `documents.get(id)`.
+    """
+
+    document_id: str
+    organization_id: str
+    project_id: str | None
+    project_slug: str | None
+    template_id: str | None
+    template_slug: str | None
+    version: str | None
+    environment: Environment
+    api_key_id: str | None
+    format: PageFormat
+    orientation: Orientation | None
+    locale: str | None
+    page_count: int
+    size_bytes: int
+    created_at: str
+    metadata: RenderMetadata
+    presigned_pdf_url: str
+    expires_at: str
+
+    # Private SDK transport reference. Excluded from `repr()` and equality so
+    # descriptors with identical wire fields compare equal even when produced
+    # by different client instances.
+    _client: PoliPage | None = field(default=None, repr=False, compare=False)
+
+    def download_pdf(self) -> bytes:
+        """Fetch the PDF bytes from `presigned_pdf_url`.
+
+        Raises `PoliPageError(code='DOWNLOAD_FAILED')` on non-2xx or network
+        failure. The S3 status (when present) is exposed via `err.status`.
+        """
+        if self._client is None:
+            raise PoliPageError(
+                "DocumentDescriptor was not constructed by a PoliPage client; "
+                "cannot download. Use client.render.document(...) or "
+                "client.documents.get(...).",
+                code="invalid_options",
+            )
+        return self._client._fetch_bytes(self.presigned_pdf_url)  # pyright: ignore[reportPrivateUsage]
 
 
 # ---------------------------------------------------------------------------

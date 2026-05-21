@@ -12,6 +12,8 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from types import TracebackType
 from typing import Any, cast
 
@@ -250,6 +252,45 @@ class PoliPage:
         return _Attempt(
             response=None, error=status_err, retryable=retryable, retry_after=retry_after
         )
+
+    # ------------------------------------------------------------------
+    # Presigned-URL transport (S3 second-hop) — no auth, no SDK retries.
+    # Failures surface as `PoliPageError(code='DOWNLOAD_FAILED')` per plan §5.5.
+    # ------------------------------------------------------------------
+
+    def _fetch_bytes(self, url: str) -> bytes:
+        try:
+            response = self._http_client.get(url)
+        except httpx.HTTPError as exc:
+            raise PoliPageError(
+                str(exc) or type(exc).__name__,
+                code="DOWNLOAD_FAILED",
+            ) from exc
+        if not response.is_success:
+            raise PoliPageError(
+                f"Failed to download PDF: {response.status_code}",
+                code="DOWNLOAD_FAILED",
+                status=response.status_code,
+            )
+        return response.content
+
+    @contextmanager
+    def _stream_bytes(self, url: str) -> Generator[Iterator[bytes], None, None]:
+        """Yield a chunk iterator over `url`. Network or non-2xx → DOWNLOAD_FAILED."""
+        try:
+            with self._http_client.stream("GET", url) as response:
+                if not response.is_success:
+                    raise PoliPageError(
+                        f"Failed to download PDF: {response.status_code}",
+                        code="DOWNLOAD_FAILED",
+                        status=response.status_code,
+                    )
+                yield response.iter_bytes()
+        except httpx.HTTPError as exc:
+            raise PoliPageError(
+                str(exc) or type(exc).__name__,
+                code="DOWNLOAD_FAILED",
+            ) from exc
 
     @staticmethod
     def _extract_retry_after(headers: httpx.Headers) -> float | None:
