@@ -88,6 +88,40 @@ class PreviewResult:
     environment: Environment
 
 
+@dataclass(frozen=True, slots=True)
+class DocumentPreviewResult:
+    """Result of `client.documents.preview(id)` (spec §6.2).
+
+    Note: the field is `page_count` (singular), not `total_pages` as in
+    `render.preview`'s `PreviewResult`. The deployed API uses different
+    field names for the two endpoints — the SDK does not paper over it.
+    """
+
+    html: str
+    page_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class Thumbnail:
+    """A single page thumbnail returned by `documents.thumbnails` (spec §6.3)."""
+
+    page: int
+    width: int
+    height: int
+    content_type: str
+    data: str
+    """Base64-encoded image bytes."""
+
+
+class ThumbnailOptions(TypedDict, total=False):
+    """Options for `client.documents.thumbnails(id, options)` (spec §6.3)."""
+
+    width: Required[int]
+    format: NotRequired[Literal["png", "jpeg"]]
+    quality: NotRequired[int]
+    pages: NotRequired[list[int]]
+
+
 @dataclass(slots=True, kw_only=True)
 class DocumentDescriptor:
     """Stored document returned by `render.document` and `documents.get` (spec §6).

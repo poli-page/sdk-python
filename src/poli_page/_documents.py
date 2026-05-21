@@ -1,0 +1,107 @@
+"""Synchronous `documents.*` namespace (spec §6, plan §3.1).
+
+Three endpoint shapes meet here:
+- JSON in + JSON out: `get`, `thumbnails`
+- Empty in + text/html out + `X-Document-Page-Count` header: `preview`
+- Empty in + no body: `delete`
+
+The thumbnails wire format wraps options under a `thumbnails` key on the
+request body and unwraps `{thumbnails: [...]}` on the response.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
+
+from poli_page._constants import (
+    HEADER_DOCUMENT_PAGE_COUNT,
+    path_document,
+    path_document_preview,
+    path_document_thumbnails,
+)
+from poli_page._transport import to_wire
+from poli_page.types import (
+    DocumentDescriptor,
+    DocumentPreviewResult,
+    Thumbnail,
+    ThumbnailOptions,
+)
+
+if TYPE_CHECKING:
+    from poli_page._client import PoliPage
+
+
+class DocumentsSync:
+    """Implements `client.documents`. Constructed by `PoliPage`; not for direct use."""
+
+    def __init__(self, client: PoliPage) -> None:
+        self._client = client
+
+    # ------------------------------------------------------------------
+    # get / preview / thumbnails / delete (spec §6.1-§6.4)
+    # ------------------------------------------------------------------
+
+    def get(self, id: str) -> DocumentDescriptor:
+        """Retrieve a stored document's descriptor with a fresh presigned URL."""
+        raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
+            "GET", path_document(id), body=None, idempotency_key=None
+        )
+        # Local import to avoid a circular reference at module load time.
+        from poli_page._render import (
+            _build_descriptor,  # pyright: ignore[reportPrivateUsage]
+        )
+
+        return _build_descriptor(self._client, raw)
+
+    def preview(self, id: str) -> DocumentPreviewResult:
+        """Retrieve stored paginated HTML + page count.
+
+        The wire response is `text/html` directly (not JSON); the page count
+        rides the `X-Document-Page-Count` header. Missing or unparseable
+        header → `page_count=0` (port Node's `documents.ts` NaN-tolerant fix).
+        """
+        response = self._client._request(  # pyright: ignore[reportPrivateUsage]
+            "GET", path_document_preview(id), body=None, idempotency_key=None
+        )
+        html = response.text
+        raw_header = response.headers.get(HEADER_DOCUMENT_PAGE_COUNT)
+        page_count = _parse_page_count(raw_header)
+        return DocumentPreviewResult(html=html, page_count=page_count)
+
+    def thumbnails(self, id: str, options: ThumbnailOptions) -> list[Thumbnail]:
+        """Generate per-page thumbnails.
+
+        Wire shape: request body is `{thumbnails: <options>}`; response is
+        `{thumbnails: [...]}` — the SDK unwraps both layers.
+        """
+        body = {"thumbnails": to_wire(cast(dict[str, object], options))}
+        raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
+            "POST", path_document_thumbnails(id), body=body, idempotency_key=None
+        )
+        items = cast(list[dict[str, object]], raw["thumbnails"])
+        return [_make_thumbnail(item) for item in items]
+
+    def delete(self, id: str) -> None:
+        """Soft-delete a stored document. Re-delete surfaces as 410 GONE."""
+        self._client._request(  # pyright: ignore[reportPrivateUsage]
+            "DELETE", path_document(id), body=None, idempotency_key=None
+        )
+
+
+def _parse_page_count(header: str | None) -> int:
+    if header is None:
+        return 0
+    try:
+        return int(header)
+    except ValueError:
+        return 0
+
+
+def _make_thumbnail(raw: dict[str, object]) -> Thumbnail:
+    return Thumbnail(
+        page=cast(int, raw["page"]),
+        width=cast(int, raw["width"]),
+        height=cast(int, raw["height"]),
+        content_type=cast(str, raw["contentType"]),
+        data=cast(str, raw["data"]),
+    )

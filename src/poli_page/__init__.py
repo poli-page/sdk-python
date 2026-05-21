@@ -18,6 +18,7 @@ from poli_page._errors import (
 from poli_page._version import __version__
 from poli_page.types import (
     DocumentDescriptor,
+    DocumentPreviewResult,
     Environment,
     InlineModeInput,
     Orientation,
@@ -27,6 +28,8 @@ from poli_page.types import (
     RenderInput,
     RenderMetadata,
     RetryEvent,
+    Thumbnail,
+    ThumbnailOptions,
 )
 
 __all__ = [
@@ -37,6 +40,7 @@ __all__ = [
     "BadRequestError",
     "ConflictError",
     "DocumentDescriptor",
+    "DocumentPreviewResult",
     "Environment",
     "GoneError",
     "InlineModeInput",
@@ -53,6 +57,8 @@ __all__ = [
     "RenderInput",
     "RenderMetadata",
     "RetryEvent",
+    "Thumbnail",
+    "ThumbnailOptions",
     "UnprocessableEntityError",
     "__version__",
     "error_codes",

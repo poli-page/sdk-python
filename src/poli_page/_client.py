@@ -121,9 +121,11 @@ class PoliPage:
             self._owns_http_client = False
 
         # Wired here to avoid a circular import at module load time.
+        from poli_page._documents import DocumentsSync
         from poli_page._render import RenderSync
 
         self.render: RenderSync = RenderSync(self)
+        self.documents: DocumentsSync = DocumentsSync(self)
 
     # ------------------------------------------------------------------
     # Lifecycle
