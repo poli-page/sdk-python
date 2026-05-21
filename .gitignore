@@ -39,6 +39,10 @@ bin/
 .env
 .env.local
 
+# Demo artifacts
+demo/output-sync/
+demo/output-async/
+
 # Local-only handoff docs (live in sdk-node or the platform repo)
 sdk-python-plan.md
 sdk-engineering-guide.md
