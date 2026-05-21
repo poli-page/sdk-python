@@ -1,4 +1,5 @@
 from poli_page import error_codes
+from poli_page._async_client import AsyncPoliPage
 from poli_page._client import PoliPage
 from poli_page._errors import (
     APIConnectionError,
@@ -17,6 +18,7 @@ from poli_page._errors import (
 )
 from poli_page._version import __version__
 from poli_page.types import (
+    AsyncDocumentDescriptor,
     DocumentDescriptor,
     DocumentPreviewResult,
     Environment,
@@ -36,6 +38,8 @@ __all__ = [
     "APIConnectionError",
     "APIStatusError",
     "APITimeoutError",
+    "AsyncDocumentDescriptor",
+    "AsyncPoliPage",
     "AuthenticationError",
     "BadRequestError",
     "ConflictError",

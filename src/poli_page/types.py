@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, Required, TypedDict
 from poli_page._errors import PoliPageError
 
 if TYPE_CHECKING:
+    from poli_page._async_client import AsyncPoliPage
     from poli_page._client import PoliPage
 
 # ---------------------------------------------------------------------------
@@ -123,12 +124,11 @@ class ThumbnailOptions(TypedDict, total=False):
 
 
 @dataclass(slots=True, kw_only=True)
-class DocumentDescriptor:
-    """Stored document returned by `render.document` and `documents.get` (spec §6).
+class _DocumentDescriptorBase:
+    """Wire-shape fields shared by the sync and async descriptors.
 
-    All wire fields are exposed as snake_cased attributes. `download_pdf()`
-    fetches the bytes from `presigned_pdf_url` on demand — the URL has a
-    15-minute TTL; if it expired, refresh via `documents.get(id)`.
+    Internal — callers should type-hint with `DocumentDescriptor` (sync) or
+    `AsyncDocumentDescriptor` (async).
     """
 
     document_id: str
@@ -150,25 +150,52 @@ class DocumentDescriptor:
     presigned_pdf_url: str
     expires_at: str
 
+
+_NO_CLIENT_MESSAGE = (
+    "Descriptor was not constructed by a Poli Page client; cannot download. "
+    "Use client.render.document(...) or client.documents.get(...)."
+)
+
+
+@dataclass(slots=True, kw_only=True)
+class DocumentDescriptor(_DocumentDescriptorBase):
+    """Stored document returned by sync `render.document` / `documents.get`.
+
+    Wire fields snake-cased; `download_pdf()` fetches the bytes from
+    `presigned_pdf_url`. The URL has a 15-minute TTL — if it expired,
+    refresh via `documents.get(id)`.
+    """
+
     # Private SDK transport reference. Excluded from `repr()` and equality so
     # descriptors with identical wire fields compare equal even when produced
     # by different client instances.
     _client: PoliPage | None = field(default=None, repr=False, compare=False)
 
     def download_pdf(self) -> bytes:
-        """Fetch the PDF bytes from `presigned_pdf_url`.
+        """Fetch the PDF bytes (sync) from `presigned_pdf_url`.
 
         Raises `PoliPageError(code='DOWNLOAD_FAILED')` on non-2xx or network
         failure. The S3 status (when present) is exposed via `err.status`.
         """
         if self._client is None:
-            raise PoliPageError(
-                "DocumentDescriptor was not constructed by a PoliPage client; "
-                "cannot download. Use client.render.document(...) or "
-                "client.documents.get(...).",
-                code="invalid_options",
-            )
+            raise PoliPageError(_NO_CLIENT_MESSAGE, code="invalid_options")
         return self._client._fetch_bytes(self.presigned_pdf_url)  # pyright: ignore[reportPrivateUsage]
+
+
+@dataclass(slots=True, kw_only=True)
+class AsyncDocumentDescriptor(_DocumentDescriptorBase):
+    """Stored document returned by async `render.document` / `documents.get`.
+
+    Identical wire fields to `DocumentDescriptor`; `download_pdf()` is async.
+    """
+
+    _client: AsyncPoliPage | None = field(default=None, repr=False, compare=False)
+
+    async def download_pdf(self) -> bytes:
+        """Fetch the PDF bytes (async) from `presigned_pdf_url`."""
+        if self._client is None:
+            raise PoliPageError(_NO_CLIENT_MESSAGE, code="invalid_options")
+        return await self._client._fetch_bytes(self.presigned_pdf_url)  # pyright: ignore[reportPrivateUsage]
 
 
 # ---------------------------------------------------------------------------
