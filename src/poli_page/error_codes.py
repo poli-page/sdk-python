@@ -1,0 +1,50 @@
+"""Known error codes round-tripped through `PoliPageError.code`.
+
+The Poli Page API may return codes not in this module — the SDK passes whatever
+the wire delivers. The constants here exist so callers can write
+`if err.code == error_codes.QUOTA_EXCEEDED:` instead of stringly-typed checks.
+
+Spec §7.2 / plan §7.4. Reserved SDK-internal codes (§7.2) sit alongside the
+API-supplied codes.
+"""
+
+# Reserved SDK-internal codes (plan §7.2).
+INVALID_OPTIONS = "invalid_options"
+NETWORK_ERROR = "network_error"
+TIMEOUT = "timeout"
+ABORTED = "aborted"
+UNKNOWN_ERROR = "unknown_error"
+DOWNLOAD_FAILED = "DOWNLOAD_FAILED"
+
+# Auth.
+MISSING_API_KEY = "MISSING_API_KEY"
+INVALID_API_KEY = "INVALID_API_KEY"
+
+# Billing / lifecycle.
+PAYMENT_REQUIRED = "PAYMENT_REQUIRED"
+FORBIDDEN = "FORBIDDEN"
+ORGANIZATION_CANCELLED = "ORGANIZATION_CANCELLED"
+ORGANIZATION_PURGED = "ORGANIZATION_PURGED"
+
+# Not found / gone.
+NOT_FOUND = "NOT_FOUND"
+VERSION_NOT_FOUND = "VERSION_NOT_FOUND"
+DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
+GONE = "GONE"
+
+# Validation.
+VALIDATION_ERROR = "VALIDATION_ERROR"
+MISSING_DATA = "MISSING_DATA"
+MISSING_PROJECT_OR_TEMPLATE = "MISSING_PROJECT_OR_TEMPLATE"
+MISSING_TEMPLATE_SLUG = "MISSING_TEMPLATE_SLUG"
+PROJECT_REQUIRED_FOR_DOCUMENT = "PROJECT_REQUIRED_FOR_DOCUMENT"
+INVALID_VERSION_FORMAT = "INVALID_VERSION_FORMAT"
+VERSION_REQUIRED = "VERSION_REQUIRED"
+INVALID_VERSION_FOR_KEY_ENV = "INVALID_VERSION_FOR_KEY_ENV"
+
+# Rate / quota.
+QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
+OVERAGE_CAP_EXCEEDED = "OVERAGE_CAP_EXCEEDED"
+
+# Server.
+INTERNAL_ERROR = "INTERNAL_ERROR"

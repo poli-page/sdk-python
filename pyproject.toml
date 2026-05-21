@@ -62,6 +62,20 @@ select = ["E", "F", "W", "I", "B", "UP", "RUF", "SIM"]
 include = ["src", "tests"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+# Test code legitimately uses Any, monkeypatching, and dynamic mocks. Plan §9.3
+# pins strict mode to src/ only; basic-equivalent for tests/ keeps noise down.
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
+reportUntypedFunctionDecorator = "none"
+reportMissingTypeStubs = "none"
+reportMissingImports = "none"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
