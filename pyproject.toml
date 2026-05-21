@@ -35,6 +35,8 @@ dev = [
     "pyright>=1.1",
     "mypy>=1.10",
     "build>=1",
+    "twine>=5",
+    "pdoc>=14",
 ]
 
 [project.urls]

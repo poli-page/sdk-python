@@ -1,0 +1,123 @@
+name: Publish to PyPI
+
+# Manual-only release workflow. Publishes to PyPI via PEP 740 Trusted
+# Publishing (OIDC; no long-lived token). This is the recommended path
+# for signed-attestation transparency; `scripts/release.sh` remains the
+# primary local fallback.
+#
+# One-time setup before this workflow can publish:
+#   1. Register the PyPI Trusted Publisher for this repo:
+#      project: poli-page
+#      owner:   poli-page
+#      repo:    sdk-python
+#      workflow: publish.yml
+#      environment: pypi-publish
+#   2. Configure the `pypi-publish` repository environment with required
+#      reviewers (so the run pauses for human approval before upload).
+#
+# Per release:
+#   1. Bump version in src/poli_page/_version.py, move [Unreleased] in
+#      CHANGELOG.md.
+#   2. Commit (`chore(release): X.Y.Z`) and push to main.
+#   3. Run this workflow via the GitHub Actions UI, enter the version,
+#      pick the target (pypi or testpypi). The workflow refuses to run
+#      if _version.py doesn't match.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (must match src/poli_page/_version.py exactly, e.g. 1.0.0 or 2.0.0rc1)"
+        required: true
+        type: string
+      target:
+        description: "Publish target"
+        required: true
+        default: "pypi"
+        type: choice
+        options:
+          - pypi
+          - testpypi
+
+permissions:
+  contents: write   # to create + push the git tag
+  id-token: write   # required for PyPI Trusted Publishing (OIDC)
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi-publish
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify input version matches src/poli_page/_version.py
+        run: |
+          set -euo pipefail
+          PKG_VERSION="$(python -c 'import re; print(re.search(r"__version__\s*=\s*\"([^\"]+)\"", open("src/poli_page/_version.py").read()).group(1))')"
+          if [[ "$PKG_VERSION" != "${{ inputs.version }}" ]]; then
+            echo "Refusing to publish: input version (${{ inputs.version }}) does not match _version.py ($PKG_VERSION)." >&2
+            exit 1
+          fi
+          echo "Releasing poli-page@$PKG_VERSION to ${{ inputs.target }}."
+
+      - name: Verify tag does not yet exist
+        run: |
+          set -euo pipefail
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Refusing to publish: tag v${{ inputs.version }} already exists." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --only-binary=:all: -e ".[dev]"
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Format check
+        run: python -m ruff format --check .
+
+      - name: Typecheck (pyright)
+        run: python -m pyright
+
+      - name: Unit tests
+        run: python -m pytest tests/unit/ tests/test_smoke.py -q
+
+      - name: Build wheel + sdist
+        run: python -m build
+
+      - name: Inspect with twine check
+        run: python -m twine check dist/*
+
+      - name: Publish to PyPI via Trusted Publishing
+        if: inputs.target == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: true
+
+      - name: Publish to TestPyPI via Trusted Publishing
+        if: inputs.target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
+
+      - name: Tag the release commit
+        if: inputs.target == 'pypi'
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
