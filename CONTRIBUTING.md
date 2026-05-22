@@ -29,6 +29,41 @@ python -m build            # build wheel + sdist into dist/
 The `dev` extra installs `pytest`, `pytest-asyncio`, `respx`, `ruff`,
 `pyright`, `mypy`, and `build`. No other dev tooling is required.
 
+## API reference site
+
+The reference at https://docs.poli.page/reference/sdk/python/ is built
+from docstrings by [`pdoc`](https://pdoc.dev/) and deployed via
+`.github/workflows/docs.yml` on every push to `main` and every published
+release. There are no hand-written pages — every section in the site
+comes from a docstring in `src/poli_page/`. To preview locally:
+
+```bash
+python -m pdoc poli_page --output-directory docs-site
+open docs-site/index.html
+```
+
+If your change touches the public API, eyeball the generated page for
+the modified module before merging.
+
+## Lockfile (`uv.lock`)
+
+The repo ships a `uv.lock` for reproducible dev environments. CI does not
+yet consume it (see `.github/workflows/ci.yml`), but contributors who want
+the exact same dependency set can use [`uv`](https://docs.astral.sh/uv/):
+
+```bash
+uv sync --all-extras          # creates .venv from uv.lock
+uv run pytest                 # runs tests against the locked set
+```
+
+Regenerate after editing `pyproject.toml` dependencies:
+
+```bash
+uv lock                       # rewrite uv.lock to match pyproject.toml
+```
+
+Commit the resulting `uv.lock` change in the same PR as the dependency edit.
+
 ## Integration tests
 
 Integration tests hit the live API. They're gated on `POLI_PAGE_API_KEY`
