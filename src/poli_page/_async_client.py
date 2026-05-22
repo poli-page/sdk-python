@@ -48,6 +48,7 @@ from poli_page._transport import (
     build_headers,
     build_url,
     compute_backoff,
+    mask_api_key,
     parse_error_body,
     parse_retry_after,
 )
@@ -136,6 +137,39 @@ class AsyncPoliPage:
     async def aclose(self) -> None:
         if self._owns_http_client and not self._http_client.is_closed:
             await self._http_client.aclose()
+
+    def __repr__(self) -> str:
+        return f"AsyncPoliPage(api_key={mask_api_key(self._api_key)!r}, base_url={self.base_url!r})"
+
+    def with_options(
+        self,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        max_retries: int | None = None,
+        retry_delay: float | None = None,
+        timeout: float | None = None,
+        on_retry: Any = None,
+        on_error: Any = None,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> AsyncPoliPage:
+        """Return a new client with the given options overridden.
+
+        Mirrors the Anthropic SDK pattern: per-call timeout/retry tuning
+        without reconstructing the client from scratch. Unspecified options
+        inherit from `self`. Each branch owns its own underlying transport
+        unless one is injected explicitly.
+        """
+        return AsyncPoliPage(
+            api_key=api_key or self._api_key,
+            base_url=base_url if base_url is not None else self.base_url,
+            max_retries=max_retries if max_retries is not None else self.max_retries,
+            retry_delay=retry_delay if retry_delay is not None else self.retry_delay,
+            timeout=timeout if timeout is not None else self.timeout,
+            on_retry=on_retry if on_retry is not None else self._on_retry,
+            on_error=on_error if on_error is not None else self._on_error,
+            http_client=http_client,
+        )
 
     async def __aenter__(self) -> AsyncPoliPage:
         return self

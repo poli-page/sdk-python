@@ -121,6 +121,106 @@ class TestConstructor:
         external.close()
 
 
+class TestRepr:
+    """API key must never leak through repr() — protects logs, REPL output,
+    framework debug pages (Django/Flask), and pytest assertion diffs.
+    """
+
+    def test_repr_does_not_leak_api_key(self) -> None:
+        secret = "pp_test_super_secret_value_do_not_leak_42"
+        client = PoliPage(api_key=secret, base_url=TEST_BASE_URL)
+        rendered = repr(client)
+        assert secret not in rendered
+        # The full key suffix must not appear either.
+        assert "super_secret" not in rendered
+        client.close()
+
+    def test_repr_shows_masked_prefix(self) -> None:
+        client = PoliPage(api_key="pp_test_super_secret_value", base_url=TEST_BASE_URL)
+        rendered = repr(client)
+        assert "PoliPage" in rendered
+        # Some recognizable prefix is fine; the bulk must be masked.
+        assert "***" in rendered
+        client.close()
+
+    def test_repr_includes_base_url(self) -> None:
+        client = PoliPage(api_key="pp_test_abc", base_url="https://api.example/v9")
+        rendered = repr(client)
+        assert "https://api.example/v9" in rendered
+        client.close()
+
+    def test_repr_handles_short_api_key(self) -> None:
+        # Should not IndexError on keys shorter than the visible-prefix length.
+        client = PoliPage(api_key="x", base_url=TEST_BASE_URL)
+        rendered = repr(client)
+        assert "x" not in rendered or "***" in rendered
+        client.close()
+
+
+class TestWithOptions:
+    """Anthropic-style branching: `client.with_options(timeout=...)` returns
+    a NEW client with overrides applied and everything else inherited.
+    """
+
+    def test_returns_new_instance(self) -> None:
+        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+        branched = client.with_options(timeout=99.0)
+        assert branched is not client
+        assert isinstance(branched, PoliPage)
+        client.close()
+        branched.close()
+
+    def test_overrides_apply(self) -> None:
+        client = PoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            timeout=10.0,
+            max_retries=2,
+        )
+        branched = client.with_options(timeout=99.0, max_retries=7)
+        assert branched.timeout == 99.0
+        assert branched.max_retries == 7
+        client.close()
+        branched.close()
+
+    def test_unspecified_options_inherited(self) -> None:
+        client = PoliPage(
+            api_key="pp_test_inherited",
+            base_url="https://api.example/v9",
+            timeout=12.5,
+            max_retries=4,
+            retry_delay=2.5,
+        )
+        branched = client.with_options(timeout=99.0)
+        assert branched.base_url == "https://api.example/v9"
+        assert branched.max_retries == 4
+        assert branched.retry_delay == 2.5
+        client.close()
+        branched.close()
+
+    def test_does_not_mutate_original(self) -> None:
+        client = PoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            timeout=10.0,
+            max_retries=2,
+        )
+        client.with_options(timeout=99.0, max_retries=7)
+        assert client.timeout == 10.0
+        assert client.max_retries == 2
+        client.close()
+
+    def test_owns_its_own_http_client(self) -> None:
+        # Branched client must not share the parent's http_client — closing
+        # one would otherwise close the other.
+        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+        branched = client.with_options(timeout=99.0)
+        assert branched._http_client is not client._http_client
+        client.close()
+        assert not branched._http_client.is_closed
+        branched.close()
+
+
 class TestPreviewHappyPath:
     @respx.mock
     def test_posts_to_render_preview(self) -> None:

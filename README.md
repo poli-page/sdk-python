@@ -212,6 +212,17 @@ Every method above also exists on `AsyncPoliPage` (with `async def` / `await`); 
 
 > **Unit note**: `retry_delay` and `timeout` are **seconds** (Python idiom). The Node SDK uses milliseconds; if you're porting from that, divide by 1000.
 
+### Branching with `with_options`
+
+When you need different settings for a single call (a longer timeout for a heavy render, fewer retries on a webhook-driven path), branch the client instead of reconstructing it:
+
+```python
+slow_client = client.with_options(timeout=120.0, max_retries=5)
+pdf = slow_client.render.pdf({"project": "billing", "template": "yearly-report", "version": "1.0.0", "data": {...}})
+```
+
+`with_options` returns a **new** client; unspecified options inherit from the original. The branch owns its own connection pool, so closing one does not close the other. The async client exposes the same method on `AsyncPoliPage`.
+
 ## Error handling
 
 The SDK ships a typed error hierarchy. Catch the broad base (`PoliPageError`) or the specific subclass — both work:

@@ -62,6 +62,26 @@ def build_headers(
 
 
 # ---------------------------------------------------------------------------
+# API key masking — only ever called for human-readable output (repr, logs).
+# Preserves the env prefix (pp_test_ / pp_live_) so operators can tell which
+# environment a client points at, then truncates the secret portion.
+# ---------------------------------------------------------------------------
+
+
+def mask_api_key(api_key: str) -> str:
+    """Return a non-reversible, human-recognisable rendering of `api_key`.
+
+    Keeps the first two underscore-separated segments when present (so
+    `pp_test_secret` → `pp_test_***`), or falls back to `***` for very short
+    or non-prefixed keys.
+    """
+    parts = api_key.split("_", 2)
+    if len(parts) >= 2 and parts[0] and parts[1]:
+        return f"{parts[0]}_{parts[1]}_***"
+    return "***"
+
+
+# ---------------------------------------------------------------------------
 # Retry math
 # ---------------------------------------------------------------------------
 

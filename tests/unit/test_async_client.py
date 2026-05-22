@@ -81,6 +81,91 @@ class TestLifecycle:
         await external.aclose()
 
 
+class TestRepr:
+    """API key must never leak through repr()."""
+
+    async def test_repr_does_not_leak_api_key(self) -> None:
+        secret = "pp_test_super_secret_value_do_not_leak_42"
+        client = AsyncPoliPage(api_key=secret, base_url=TEST_BASE_URL)
+        rendered = repr(client)
+        assert secret not in rendered
+        assert "super_secret" not in rendered
+        await client.aclose()
+
+    async def test_repr_shows_masked_prefix(self) -> None:
+        client = AsyncPoliPage(api_key="pp_test_super_secret_value", base_url=TEST_BASE_URL)
+        rendered = repr(client)
+        assert "AsyncPoliPage" in rendered
+        assert "***" in rendered
+        await client.aclose()
+
+    async def test_repr_includes_base_url(self) -> None:
+        client = AsyncPoliPage(api_key="pp_test_abc", base_url="https://api.example/v9")
+        rendered = repr(client)
+        assert "https://api.example/v9" in rendered
+        await client.aclose()
+
+
+class TestWithOptions:
+    """Async parity for the Anthropic-style branching factory."""
+
+    async def test_returns_new_instance(self) -> None:
+        client = AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+        branched = client.with_options(timeout=99.0)
+        assert branched is not client
+        assert isinstance(branched, AsyncPoliPage)
+        await client.aclose()
+        await branched.aclose()
+
+    async def test_overrides_apply(self) -> None:
+        client = AsyncPoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            timeout=10.0,
+            max_retries=2,
+        )
+        branched = client.with_options(timeout=99.0, max_retries=7)
+        assert branched.timeout == 99.0
+        assert branched.max_retries == 7
+        await client.aclose()
+        await branched.aclose()
+
+    async def test_unspecified_options_inherited(self) -> None:
+        client = AsyncPoliPage(
+            api_key="pp_test_inherited",
+            base_url="https://api.example/v9",
+            timeout=12.5,
+            max_retries=4,
+            retry_delay=2.5,
+        )
+        branched = client.with_options(timeout=99.0)
+        assert branched.base_url == "https://api.example/v9"
+        assert branched.max_retries == 4
+        assert branched.retry_delay == 2.5
+        await client.aclose()
+        await branched.aclose()
+
+    async def test_does_not_mutate_original(self) -> None:
+        client = AsyncPoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            timeout=10.0,
+            max_retries=2,
+        )
+        client.with_options(timeout=99.0, max_retries=7)
+        assert client.timeout == 10.0
+        assert client.max_retries == 2
+        await client.aclose()
+
+    async def test_owns_its_own_http_client(self) -> None:
+        client = AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+        branched = client.with_options(timeout=99.0)
+        assert branched._http_client is not client._http_client
+        await client.aclose()
+        assert not branched._http_client.is_closed
+        await branched.aclose()
+
+
 class TestPreviewHappyPath:
     @respx.mock
     async def test_posts_to_render_preview(self) -> None:
