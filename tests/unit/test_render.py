@@ -293,3 +293,48 @@ class TestRequestBody:
         assert "idempotency_key" not in body
         assert "idempotencyKey" not in body
         assert route.calls.last.request.headers["Idempotency-Key"] == "caller-key"
+
+    @respx.mock
+    def test_render_document_forwards_metadata(self, client: PoliPage) -> None:
+        import json
+
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        client.render.document(
+            {**PROJECT_MODE_INPUT, "metadata": {"order_id": "ord_42", "tier": "pro"}}  # type: ignore[arg-type]
+        )
+        body = json.loads(route.calls.last.request.read())
+        assert body["metadata"] == {"order_id": "ord_42", "tier": "pro"}
+
+
+class TestIdempotencyKeyAcrossRetries:
+    """Spec §5.1: a single logical request keeps one idempotency-key for the
+    entire retry lifecycle. Regenerating it would defeat server-side dedup.
+    """
+
+    @respx.mock
+    def test_same_idempotency_key_reused_on_retry(self, client: PoliPage) -> None:
+        responses = [
+            httpx.Response(503, json={"code": "boom"}),
+            _descriptor_response(),
+        ]
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
+        client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        assert route.call_count == 2
+        first = route.calls[0].request.headers["Idempotency-Key"]
+        second = route.calls[1].request.headers["Idempotency-Key"]
+        assert first == second
+        assert first  # not empty
+
+    @respx.mock
+    def test_caller_supplied_key_reused_on_retry(self, client: PoliPage) -> None:
+        responses = [
+            httpx.Response(503, json={"code": "boom"}),
+            _descriptor_response(),
+        ]
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
+        client.render.document(
+            {**PROJECT_MODE_INPUT, "idempotency_key": "caller-key-7"}  # type: ignore[arg-type]
+        )
+        assert route.call_count == 2
+        assert route.calls[0].request.headers["Idempotency-Key"] == "caller-key-7"
+        assert route.calls[1].request.headers["Idempotency-Key"] == "caller-key-7"

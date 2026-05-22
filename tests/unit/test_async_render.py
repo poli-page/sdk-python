@@ -188,3 +188,22 @@ class TestRenderPdfStream:
                         pass
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status == 404
+
+
+class TestIdempotencyKeyAcrossRetries:
+    """Spec §5.1: same idempotency-key reused across the retry lifecycle."""
+
+    @respx.mock
+    async def test_same_idempotency_key_reused_on_retry(self) -> None:
+        responses = [
+            httpx.Response(503, json={"code": "boom"}),
+            _descriptor_response(),
+        ]
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
+        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+            await client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        assert route.call_count == 2
+        first = route.calls[0].request.headers["Idempotency-Key"]
+        second = route.calls[1].request.headers["Idempotency-Key"]
+        assert first == second
+        assert first
