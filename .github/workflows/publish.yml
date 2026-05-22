@@ -121,3 +121,33 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag "v${{ inputs.version }}"
           git push origin "v${{ inputs.version }}"
+
+      - name: Extract CHANGELOG section for this version
+        if: inputs.target == 'pypi'
+        id: changelog
+        run: |
+          set -euo pipefail
+          # Slice between `## [X.Y.Z]` (inclusive of trailing newline) and the
+          # next `## [` heading (exclusive). Falls back to a stub note if the
+          # version isn't documented yet — so the release never blocks on copy.
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          awk -v ver="${{ inputs.version }}" '
+            $0 ~ "^## \\[" ver "\\]" { capture = 1; next }
+            capture && /^## \[/        { exit }
+            capture                    { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "_See [CHANGELOG.md](CHANGELOG.md) for details._" > "$NOTES_FILE"
+          fi
+          echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: inputs.target == 'pypi'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --notes-file "${{ steps.changelog.outputs.notes_file }}" \
+            dist/*
