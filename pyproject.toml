@@ -44,6 +44,8 @@ Homepage = "https://poli.page"
 Documentation = "https://docs.poli.page/reference/sdk/python/"
 Source = "https://github.com/poli-page/sdk-python"
 Issues = "https://github.com/poli-page/sdk-python/issues"
+Changelog = "https://github.com/poli-page/sdk-python/blob/main/CHANGELOG.md"
+Release-Notes = "https://github.com/poli-page/sdk-python/releases"
 
 [tool.hatch.version]
 source = "regex"
