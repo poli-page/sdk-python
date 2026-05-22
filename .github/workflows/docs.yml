@@ -40,8 +40,18 @@ jobs:
 
       - name: Build API reference site with pdoc
         run: |
+          set -euo pipefail
           mkdir -p docs-site
           python -m pdoc poli_page --output-directory docs-site
+
+      - name: Verify pdoc produced an index
+        run: |
+          set -euo pipefail
+          if [ ! -s docs-site/index.html ]; then
+            echo "pdoc did not emit docs-site/index.html — refusing to deploy an empty site." >&2
+            ls -la docs-site || true
+            exit 1
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
