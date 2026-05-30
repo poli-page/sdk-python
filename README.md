@@ -7,7 +7,7 @@
 
 Official Python SDK for [Poli Page](https://poli.page) — render polished PDFs from HTML templates via the Poli Page API.
 
-→ API reference (auto-generated from source): **https://docs.poli.page/reference/sdk/python/**
+→ API reference (auto-generated from source): **https://poli-page.github.io/sdk-python/**
 
 ## Install
 
@@ -300,7 +300,7 @@ except PoliPageError as err:
     raise
 ```
 
-→ Full error reference: https://docs.poli.page/reference/sdk/python/
+→ Full error reference: https://poli-page.github.io/sdk-python/reference/errors/
 
 ## Cancellation & timeouts
 
@@ -396,7 +396,7 @@ The SDK retries on **5xx**, **429**, **network errors**, and **timeouts**. Backo
 ## Documentation & support
 
 - Platform docs: [docs.poli.page](https://docs.poli.page)
-- SDK API reference: [docs.poli.page/reference/sdk/python](https://docs.poli.page/reference/sdk/python/)
+- SDK API reference: [poli-page.github.io/sdk-python](https://poli-page.github.io/sdk-python/)
 - Sign up & generate API keys: [app.poli.page](https://app.poli.page)
 - Issues: [github.com/poli-page/sdk-python/issues](https://github.com/poli-page/sdk-python/issues)
 

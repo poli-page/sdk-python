@@ -1,0 +1,56 @@
+---
+title: Quick start
+description: Render your first PDF with the Poli Page Python SDK in under 30 seconds.
+---
+
+import ApiKeyCallout from '@preset/components/ApiKeyCallout.astro';
+
+This page walks through your first render — from key to PDF — without touching the dashboard.
+
+<ApiKeyCallout />
+
+## Set your API key
+
+Export your key into the environment your script runs in:
+
+```bash
+export POLI_PAGE_API_KEY=pp_test_...
+```
+
+## Render a PDF
+
+```python
+from poli_page import PoliPage
+
+client = PoliPage()  # picks up POLI_PAGE_API_KEY from the environment
+
+pdf = client.render.pdf({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001", "total": 1280},
+})
+```
+
+`pdf` is `bytes`. Write it to disk, upload it to S3, or return it directly from a web handler.
+
+## Example
+
+```python
+from pathlib import Path
+from poli_page import PoliPage
+
+client = PoliPage()  # picks up POLI_PAGE_API_KEY from the environment
+
+pdf = client.render.pdf({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001", "total": 1280},
+})
+
+Path("./invoice.pdf").write_bytes(pdf)
+```
+
+## See also
+- [Authentication](../../concepts/authentication/)
+- [Render modes](../../concepts/render-modes/)
+- [Output handling](../../concepts/output-handling/)

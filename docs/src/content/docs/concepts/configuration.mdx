@@ -1,0 +1,37 @@
+---
+title: Configuration
+description: Per-client options for timeouts, retries, and observability hooks.
+---
+
+The `PoliPage` and `AsyncPoliPage` constructors accept keyword-only arguments. Every parameter is optional — when `api_key` is omitted the SDK reads `POLI_PAGE_API_KEY` from the environment.
+
+## Available options
+
+- `api_key` — your `pp_test_` or `pp_live_` key. Required at runtime; falls back to `POLI_PAGE_API_KEY`.
+- `base_url` — override the API endpoint. Defaults to `https://api.poli.page` (or `POLI_PAGE_BASE_URL`).
+- `timeout` — per-request timeout in seconds. Defaults to `60.0`.
+- `max_retries` — maximum retry attempts for retryable errors. Defaults to `2` (three total attempts).
+- `retry_delay` — initial retry backoff in seconds. Defaults to `0.5`. Doubles each attempt.
+- `on_retry` / `on_error` — observability hooks. Sync callables; never block, never mutate requests.
+- `http_client` — inject your own `httpx.Client` (sync) or `httpx.AsyncClient` (async) for proxies, custom TLS, shared pools, or test transports. Caller-owned clients are not closed on `close()` / `aclose()`.
+
+## Example
+
+```python
+import os
+from poli_page import PoliPage
+
+client = PoliPage(
+    api_key=os.environ["POLI_PAGE_API_KEY"],
+    timeout=30.0,
+    max_retries=3,
+    retry_delay=0.25,
+    on_retry=lambda event: print(f"retry {event.attempt} in {event.delay_seconds:.2f}s"),
+    on_error=lambda err: print(f"failed: {err.code}"),
+)
+```
+
+## See also
+- [Authentication](../authentication/)
+- [Observability](../../production/observability/)
+- [Retries and idempotency](../../production/retries-and-idempotency/)

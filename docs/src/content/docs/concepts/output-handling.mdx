@@ -1,0 +1,86 @@
+---
+title: Output handling
+description: Receive PDF bytes in memory, as a stream, written to disk, or stored server-side.
+---
+
+The SDK gives you four ways to handle a rendered PDF: in-memory bytes, a streaming context manager, a write-to-disk helper, or a stored document on the server. Pick the one that matches how your code consumes the output.
+
+## In-memory (`render.pdf`)
+
+```python
+pdf = client.render.pdf({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001"},
+})
+# pdf: bytes — write, upload, return as-is.
+```
+
+Best for documents that fit comfortably in process memory.
+
+## Streaming (`render.pdf_stream`)
+
+For large PDFs or piping straight to an HTTP response or object store, use `render.pdf_stream` and let the SDK keep memory bounded.
+
+```python
+with client.render.pdf_stream({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001"},
+}) as chunks:
+    for chunk in chunks:
+        # write to an upload, an HTTP response, anywhere bounded-memory matters.
+        ...
+```
+
+`AsyncPoliPage.render.pdf_stream(...)` is the `async with` / `async for` mirror.
+
+## Write to file (`render_to_file`)
+
+The `poli_page.fs` module ships a helper that streams bytes directly to disk with bounded memory. Parent directories are created automatically.
+
+```python
+from poli_page.fs import render_to_file
+
+render_to_file(
+    client,
+    {"project": "billing", "template": "invoice", "data": {}},
+    "./out.pdf",
+)
+```
+
+Async variant: `async_render_to_file(client, input, path)` — same shape, awaits internally.
+
+## Server-side storage (`render.document`)
+
+When you want the PDF to live on Poli Page's servers (for later download, preview, or thumbnails), use `render.document`. It returns a `DocumentDescriptor` with `document_id`, `presigned_pdf_url`, and a `download_pdf()` method.
+
+```python
+doc = client.render.document({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001"},
+})
+pdf = doc.download_pdf()
+```
+
+`presigned_pdf_url` has a 15-minute TTL. If it expires, call `documents.get(document_id)` to refresh.
+
+## Example
+
+```python
+from poli_page import PoliPage
+from poli_page.fs import render_to_file
+
+client = PoliPage()
+
+render_to_file(
+    client,
+    {"project": "billing", "template": "invoice", "data": {"invoiceNumber": "INV-001"}},
+    "./invoices/INV-001.pdf",
+)
+```
+
+## See also
+- [Cancellation](../../production/cancellation/)
+- [Retries and idempotency](../../production/retries-and-idempotency/)

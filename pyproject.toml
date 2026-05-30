@@ -41,7 +41,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://poli.page"
-Documentation = "https://docs.poli.page/reference/sdk/python/"
+Documentation = "https://poli-page.github.io/sdk-python/"
 Source = "https://github.com/poli-page/sdk-python"
 Issues = "https://github.com/poli-page/sdk-python/issues"
 Changelog = "https://github.com/poli-page/sdk-python/blob/main/CHANGELOG.md"
@@ -90,6 +90,9 @@ exclude = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Docs-only trees are excluded from lint/format: docstring style and runnable
+# examples follow a different cadence than the library code in src/.
+extend-exclude = ["docs", "examples", "scripts/extract-api"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "RUF", "SIM"]

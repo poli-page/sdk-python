@@ -1,0 +1,56 @@
+---
+title: Authentication
+description: How the Poli Page SDK authenticates with the API using test or live keys.
+---
+
+import ApiKeyCallout from '@preset/components/ApiKeyCallout.astro';
+
+The Poli Page Python SDK authenticates every request with a bearer token. The key prefix determines which environment the request hits.
+
+## API keys
+
+<ApiKeyCallout />
+
+Pass the key to the client constructor, or let the SDK pick it up from `POLI_PAGE_API_KEY`:
+
+```python
+import os
+from poli_page import PoliPage
+
+# Explicit:
+client = PoliPage(api_key=os.environ["POLI_PAGE_API_KEY"])
+
+# Implicit — same env var, fewer characters:
+client = PoliPage()
+```
+
+If no key is provided either way, the constructor raises `PoliPageError(code="invalid_options")`.
+
+## Custom base URL
+
+To target the develop environment (or a self-hosted gateway), override `base_url`:
+
+```python
+client = PoliPage(
+    api_key=os.environ["POLI_PAGE_API_KEY"],
+    base_url="https://api-develop.poli.page",
+)
+```
+
+`POLI_PAGE_BASE_URL` is honored when `base_url` is omitted.
+
+## Example
+
+```python
+import os
+from poli_page import PoliPage
+
+client = PoliPage(
+    api_key=os.environ["POLI_PAGE_API_KEY"],
+    base_url=os.environ.get("POLI_PAGE_BASE_URL", "https://api.poli.page"),
+)
+```
+
+## See also
+- [Configuration](../configuration/)
+- [Errors](../../production/errors/)

@@ -1,0 +1,37 @@
+---
+import { LANGUAGES, type LanguageId } from '../languages.js';
+
+interface Props {
+  current: LanguageId;
+}
+const { current } = Astro.props;
+
+const REPO_BY_LANG: Record<LanguageId, string> = {
+  go: 'sdk-go',
+  node: 'sdk-node',
+  php: 'sdk-php',
+  python: 'sdk-python',
+  ruby: 'sdk-ruby',
+  rust: 'sdk-rust',
+};
+
+const items = (Object.keys(LANGUAGES) as LanguageId[]).map((id) => ({
+  id,
+  displayName: LANGUAGES[id].displayName,
+  href: `https://poli-page.github.io/${REPO_BY_LANG[id]}/`,
+  current: id === current,
+}));
+---
+
+<nav class="pp-lang-switcher" aria-label="SDK language">
+  <details>
+    <summary>{LANGUAGES[current].displayName} SDK</summary>
+    <ul>
+      {items.map((item) => (
+        <li>
+          <a href={item.href} aria-current={item.current ? 'page' : undefined}>{item.displayName}</a>
+        </li>
+      ))}
+    </ul>
+  </details>
+</nav>

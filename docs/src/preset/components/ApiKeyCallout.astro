@@ -1,0 +1,11 @@
+---
+import { Aside } from '@astrojs/starlight/components';
+---
+
+<div class="pp-api-key-callout">
+  <Aside type="note" title="Test vs live keys">
+    The API key prefix determines the mode:
+    <code>pp_test_…</code> hits sandbox (not billed). <code>pp_live_…</code> hits production (billed).
+    Both prefixes target the same endpoint.
+  </Aside>
+</div>

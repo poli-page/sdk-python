@@ -1,15 +1,18 @@
 name: Docs
-
 on:
   push:
     branches: [main]
     paths:
-      - "src/**"
-      - "README.md"
-      - "pyproject.toml"
-      - ".github/workflows/docs.yml"
-  release:
-    types: [published]
+      - 'src/**'
+      - 'examples/**'
+      - 'docs/**'
+      - 'scripts/extract-api/**'
+      - 'pyproject.toml'
+      - 'CHANGELOG.md'
+      - 'MIGRATION.md'
+      - 'LICENSE'
+      - '.github/workflows/docs.yml'
+  release: { types: [published] }
   workflow_dispatch:
 
 permissions:
@@ -25,38 +28,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --only-binary=:all: -e "."
-          pip install --only-binary=:all: pdoc
-
-      - name: Build API reference site with pdoc
-        run: |
-          set -euo pipefail
-          mkdir -p docs-site
-          python -m pdoc poli_page --output-directory docs-site
-
-      - name: Verify pdoc produced an index
-        run: |
-          set -euo pipefail
-          if [ ! -s docs-site/index.html ]; then
-            echo "pdoc did not emit docs-site/index.html — refusing to deploy an empty site." >&2
-            ls -la docs-site || true
-            exit 1
-          fi
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+          python-version: '3.12'
+      - name: Install SDK (extractor reads src/poli_page via ast — no install needed)
+        run: python -m pip install --upgrade pip
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
-          path: docs-site
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
+      - name: Install docs deps
+        working-directory: docs
+        run: npm ci || npm install --no-audit --no-fund
+      - name: Build docs site (extract + astro build)
+        working-directory: docs
+        run: npm run build
+      - name: Verify index exists
+        run: test -s docs/dist/index.html
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: docs/dist
 
   deploy:
     needs: build
@@ -65,6 +58,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - id: deployment
+        uses: actions/deploy-pages@d6db90ba9d3a1c8d5b6b1e2b6e5b88aaa3c2e8bb # v4.0.5

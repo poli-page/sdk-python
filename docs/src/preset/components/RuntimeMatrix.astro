@@ -1,0 +1,38 @@
+---
+type Support = 'supported' | 'tested' | 'unsupported';
+interface Matrix {
+  runtimes: string[];
+  os: string[];
+  cells: Record<string, Record<string, Support>>;
+}
+interface Props {
+  matrix: Matrix;
+}
+const { matrix } = Astro.props;
+
+const symbol: Record<Support, string> = {
+  supported: '○',
+  tested: '●',
+  unsupported: '—',
+};
+---
+
+<table class="pp-runtime-matrix">
+  <thead>
+    <tr>
+      <th>Runtime</th>
+      {matrix.os.map((o) => <th>{o}</th>)}
+    </tr>
+  </thead>
+  <tbody>
+    {matrix.runtimes.map((r) => (
+      <tr>
+        <td><code>{r}</code></td>
+        {matrix.os.map((o) => {
+          const s: Support = matrix.cells[r]?.[o] ?? 'unsupported';
+          return <td data-support={s} title={s}>{symbol[s]}</td>;
+        })}
+      </tr>
+    ))}
+  </tbody>
+</table>

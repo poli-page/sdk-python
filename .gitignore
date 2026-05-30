@@ -55,3 +55,12 @@ build/
 sdk-python-plan.md
 sdk-engineering-guide.md
 sdk-roadmap.md
+
+# Astro / Starlight docs site
+docs/node_modules/
+docs/dist/
+docs/.astro/
+docs/src/content/docs/reference/
+
+# Extractor cache
+scripts/extract-api/.cache/

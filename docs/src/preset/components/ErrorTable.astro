@@ -1,0 +1,31 @@
+---
+interface ErrorRow {
+  code: string;
+  when: string;
+  recovery?: string;
+}
+interface Props {
+  errors: ErrorRow[];
+}
+const { errors } = Astro.props;
+const showRecovery = errors.some((e) => e.recovery);
+---
+
+<table class="pp-error-table">
+  <thead>
+    <tr>
+      <th>Code</th>
+      <th>When</th>
+      {showRecovery && <th>Recovery</th>}
+    </tr>
+  </thead>
+  <tbody>
+    {errors.map((e) => (
+      <tr>
+        <td><code>{e.code}</code></td>
+        <td>{e.when}</td>
+        {showRecovery && <td>{e.recovery ?? '—'}</td>}
+      </tr>
+    ))}
+  </tbody>
+</table>

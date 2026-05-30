@@ -1,0 +1,76 @@
+---
+title: Errors
+description: How the Poli Page Python SDK surfaces failures and how to handle each error code.
+---
+
+import ErrorTable from '@preset/components/ErrorTable.astro';
+
+Every failure raised by the SDK is an instance of `PoliPageError` or one of its subclasses. The `code` attribute tells you what went wrong; the `request_id` attribute is what to quote when filing a support ticket.
+
+## The error hierarchy
+
+`PoliPageError` is the base catch-all. Two transport-level branches (`APIConnectionError` and its `APITimeoutError` subclass) and one HTTP-status branch (`APIStatusError`, with per-status subclasses like `RateLimitError`, `NotFoundError`, `BadRequestError`) cover every failure mode.
+
+```python
+from poli_page import PoliPage, PoliPageError
+
+client = PoliPage()
+
+try:
+    client.render.pdf({"project": "billing", "template": "invoice", "data": {}})
+except PoliPageError as err:
+    print(err.code, err.request_id, err.message)
+```
+
+## SDK-internal codes
+
+These originate inside the SDK before any HTTP call (or in response to a network-layer failure). They are lowercase.
+
+<ErrorTable errors={[
+  { code: 'invalid_options', when: 'The arguments passed to the PoliPage constructor are invalid (missing api_key, malformed base_url, etc.).', recovery: 'Fix the constructor call. Raised synchronously.' },
+  { code: 'network_error', when: 'TCP/TLS-layer failure reaching the API.', recovery: 'Automatically retried up to max_retries times.' },
+  { code: 'timeout', when: 'The request did not complete within the configured `timeout`.', recovery: 'Automatically retried up to max_retries times. Raise `timeout` if it keeps tripping.' },
+  { code: 'DOWNLOAD_FAILED', when: 'The S3 second-hop download (after `render.pdf` / `render.pdf_stream`) failed.', recovery: 'Re-fetch the descriptor via documents.get(id) — presigned URLs expire after 15 minutes.' },
+]} />
+
+## API codes
+
+Returned by the Poli Page API. Uppercase, snake-case. The SDK forwards the code verbatim.
+
+<ErrorTable errors={[
+  { code: 'INVALID_API_KEY', when: 'The API key is malformed or revoked.', recovery: 'Rotate the key in the dashboard.' },
+  { code: 'MISSING_API_KEY', when: 'No API key was provided in the request.', recovery: 'Check the constructor was called with `api_key`.' },
+  { code: 'NOT_FOUND', when: 'The `project/template` slug or document id does not exist.', recovery: 'Verify the slug/id; check the template is published in this environment.' },
+  { code: 'VALIDATION_ERROR', when: 'The `data` mapping does not satisfy the template schema.', recovery: 'Inspect the template schema in the dashboard.' },
+  { code: 'MISSING_DATA', when: 'The request body lacks a required `data` field.', recovery: 'Pass `data={}` (or with values) on every render call.' },
+  { code: 'QUOTA_EXCEEDED', when: 'You exceeded the per-key rate limit or monthly quota.', recovery: 'Automatically retried; bump tier for sustained higher throughput.' },
+  { code: 'PAYMENT_REQUIRED', when: 'The organization\'s billing is past due.', recovery: 'Update the payment method in the dashboard.' },
+  { code: 'INTERNAL_ERROR', when: 'The API returned 5xx.', recovery: 'Automatically retried; contact support if it persists.' },
+]} />
+
+The full list of API codes lives in [the reference](../../reference/errors/).
+
+## Example
+
+```python
+from poli_page import PoliPage, PoliPageError, RateLimitError
+
+client = PoliPage()
+
+try:
+    pdf = client.render.pdf({
+        "project": "billing",
+        "template": "invoice",
+        "data": {"invoiceNumber": "INV-001", "total": 1280},
+    })
+except RateLimitError:
+    # Custom strategy beyond the SDK's built-in retries.
+    pdf = None
+except PoliPageError as err:
+    print(f"render failed: {err.code} ({err.request_id})")
+    raise
+```
+
+## See also
+- [Retries and idempotency](../retries-and-idempotency/)
+- [Observability](../observability/)
