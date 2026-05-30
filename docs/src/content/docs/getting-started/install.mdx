@@ -1,0 +1,33 @@
+---
+title: Install
+description: How to install the Poli Page Python SDK with pip, uv, or Poetry.
+---
+
+The Poli Page Python SDK ships as `poli-page` on PyPI. It is type-checked, ships with `py.typed`, and requires Python 3.11 or later.
+
+## Install with your package manager
+
+```bash
+pip install poli-page
+# or
+uv add poli-page
+# or
+poetry add poli-page
+```
+
+## Python version
+
+The SDK targets Python 3.11 and tests against 3.11, 3.12, and 3.13 on Linux, macOS, and Windows. See [runtime support](../../reference/runtime-support/) for the full matrix.
+
+## Example
+
+```python
+import os
+from poli_page import PoliPage
+
+client = PoliPage(api_key=os.environ["POLI_PAGE_API_KEY"])
+```
+
+## See also
+- [Quick start](../quick-start/)
+- [Configuration](../../concepts/configuration/)

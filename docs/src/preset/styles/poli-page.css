@@ -1,0 +1,61 @@
+/* @poli-page/starlight-preset — design tokens
+ * Authored once here; every consumer SDK site inherits.
+ * Numbers track src/theme.ts — update both together.
+ */
+
+:root {
+  --pp-brand: #4f46e5;
+  --pp-brand-contrast: #ffffff;
+  --pp-radius: 0.5rem;
+  --pp-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --sl-color-accent: var(--pp-brand);
+  --sl-color-accent-high: #6366f1;
+  --sl-color-accent-low: #312e81;
+  --sl-color-text-accent: var(--sl-color-accent-high);
+}
+
+:root[data-theme='dark'] {
+  --pp-brand: #818cf8;
+  --sl-color-accent: var(--pp-brand);
+  --sl-color-accent-high: #a5b4fc;
+  --sl-color-accent-low: #3730a3;
+}
+
+.pp-method-signature {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: var(--pp-radius);
+  padding: 1rem 1.25rem;
+  font-family: var(--pp-mono);
+  background: var(--sl-color-bg-sidebar);
+  overflow-x: auto;
+}
+
+.pp-params-table,
+.pp-error-table,
+.pp-runtime-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.pp-params-table th,
+.pp-error-table th,
+.pp-runtime-matrix th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--sl-color-gray-5);
+}
+
+.pp-params-table td,
+.pp-error-table td,
+.pp-runtime-matrix td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--sl-color-gray-6);
+  vertical-align: top;
+}
+
+.pp-api-key-callout code {
+  font-family: var(--pp-mono);
+}

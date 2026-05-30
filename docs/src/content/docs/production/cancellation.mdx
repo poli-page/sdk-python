@@ -1,0 +1,78 @@
+---
+title: Cancellation
+description: How to cancel in-flight requests with timeouts and asyncio task cancellation.
+---
+
+The synchronous `PoliPage` client cancels via the per-request `timeout` parameter. The asynchronous `AsyncPoliPage` client additionally honors `asyncio` task cancellation: cancelling the task that awaits a render method aborts the in-flight HTTP request.
+
+## Sync cancellation via timeout
+
+The constructor's `timeout` argument (seconds) is the only sync-side cancellation primitive. A request that overruns it surfaces as `APITimeoutError` (subclass of `APIConnectionError`) with `code="timeout"`.
+
+```python
+from poli_page import PoliPage, APITimeoutError
+
+client = PoliPage(timeout=5.0)
+
+try:
+    pdf = client.render.pdf({
+        "project": "billing",
+        "template": "invoice",
+        "data": {"invoiceNumber": "INV-001", "total": 1280},
+    })
+except APITimeoutError:
+    print("render took longer than 5 seconds")
+```
+
+## Async cancellation via task cancellation
+
+With `AsyncPoliPage`, cancelling the surrounding task raises `asyncio.CancelledError` and closes the underlying HTTP connection. The error propagates as `CancelledError` — it is **not** wrapped in `PoliPageError` and is **never** retried.
+
+```python
+import asyncio
+from poli_page import AsyncPoliPage
+
+async def render_with_deadline() -> bytes:
+    async with AsyncPoliPage() as client:
+        return await asyncio.wait_for(
+            client.render.pdf({
+                "project": "billing",
+                "template": "invoice",
+                "data": {"invoiceNumber": "INV-001", "total": 1280},
+            }),
+            timeout=5.0,
+        )
+```
+
+`asyncio.wait_for` cancels the wrapped task on timeout, which in turn aborts the SDK's HTTP call.
+
+## Cancellation vs timeout
+
+The `timeout` constructor option and an `asyncio.CancelledError` from the caller compose: whichever fires first wins. Task cancellation always wins on or before the SDK timeout.
+
+## Example
+
+```python
+import asyncio
+from poli_page import AsyncPoliPage, APITimeoutError
+
+async def main() -> None:
+    async with AsyncPoliPage(timeout=30.0) as client:
+        try:
+            pdf = await asyncio.wait_for(
+                client.render.pdf({
+                    "project": "billing",
+                    "template": "invoice",
+                    "data": {"invoiceNumber": "INV-001", "total": 1280},
+                }),
+                timeout=10.0,
+            )
+        except (APITimeoutError, asyncio.TimeoutError):
+            print("cancelled")
+
+asyncio.run(main())
+```
+
+## See also
+- [Configuration](../../concepts/configuration/)
+- [Errors](../errors/)

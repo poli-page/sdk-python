@@ -1,0 +1,60 @@
+---
+title: Render modes
+description: Project mode renders a stored template; inline mode renders raw HTML and is supported only by preview.
+---
+
+The Python SDK exposes two ways to describe what to render: **project mode** (a stored template at `project/template`) and **inline mode** (raw HTML you pass directly).
+
+Project mode is required by all the PDF-producing methods (`render.pdf`, `render.pdf_stream`, `render.document`, and the `render_to_file` helper). Inline mode is supported only by `render.preview`, which returns HTML rather than PDF bytes — useful for debugging template data without engaging the PDF pipeline.
+
+## Project mode
+
+You reference a template by its `project` and `template` slugs, plus a `data` mapping that fills the template's placeholders. Optionally pin a `version`.
+
+```python
+pdf = client.render.pdf({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001", "total": 1280},
+})
+```
+
+Project mode keeps templates centralized — anyone with dashboard access can edit them without touching code.
+
+## Inline mode (preview only)
+
+For one-off layout experiments, pass the HTML directly. The `template` field accepts a string when there's no `project`:
+
+```python
+preview = client.render.preview({
+    "template": "<h1>Hello {{ name }}</h1>",
+    "data": {"name": "World"},
+})
+```
+
+Inline mode only works with `render.preview`. To turn inline HTML into a PDF, save it as a template in the dashboard first, then use project mode. Calling `render.pdf` / `render.pdf_stream` / `render.document` with inline input raises `PoliPageError(code="PROJECT_REQUIRED_FOR_DOCUMENT")` locally — no HTTP round-trip is wasted.
+
+## Example
+
+```python
+from poli_page import PoliPage
+
+client = PoliPage()
+
+# Project mode — PDF
+invoice_pdf = client.render.pdf({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001", "total": 1280},
+})
+
+# Inline mode — preview HTML only
+greeting = client.render.preview({
+    "template": "<h1>Hello {{ name }}</h1>",
+    "data": {"name": "World"},
+})
+```
+
+## See also
+- [Output handling](../output-handling/)
+- [Configuration](../configuration/)

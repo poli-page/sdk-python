@@ -1,0 +1,71 @@
+---
+title: Observability
+description: Logging, retry hooks, and httpx event hooks for instrumenting the SDK.
+---
+
+The SDK exposes two layers of observability: SDK-level hooks (`on_retry`, `on_error`) for retry and terminal-failure signals, plus a silent-by-default `poli_page` logger and full `httpx` event-hook pass-through for request/response wiretapping.
+
+## SDK-level hooks
+
+Both `PoliPage` and `AsyncPoliPage` accept two optional sync callables on the constructor:
+
+- `on_retry(event)` — fires when the SDK decides to retry. `event.attempt` (1-based, next attempt), `event.delay_seconds`, `event.reason` (the `PoliPageError` that triggered the retry).
+- `on_error(err)` — fires when a request fails terminally (after retries are exhausted).
+
+Both hooks are fire-and-forget — exceptions inside them are caught and logged at DEBUG, never propagated.
+
+## Logging
+
+The SDK emits records on the `poli_page` logger, silent by default. Configure as usual:
+
+```python
+import logging
+
+logging.getLogger("poli_page").setLevel(logging.INFO)
+```
+
+The `POLI_PAGE_LOG=debug|info|warning|error` env var is also honored.
+
+## Request/response wiretap via httpx
+
+For full request/response tracing (OpenTelemetry spans, audit logs, header inspection), pass your own `httpx.Client` (or `httpx.AsyncClient`) with `event_hooks` configured:
+
+```python
+import httpx
+from poli_page import PoliPage
+
+def on_request(request: httpx.Request) -> None:
+    print(f"→ {request.method} {request.url}")
+
+def on_response(response: httpx.Response) -> None:
+    print(f"← {response.status_code} in {response.elapsed.total_seconds() * 1000:.0f}ms")
+
+http = httpx.Client(event_hooks={"request": [on_request], "response": [on_response]})
+client = PoliPage(http_client=http)
+```
+
+The caller owns the lifecycle of an injected client — `PoliPage.close()` does not close it.
+
+## Example
+
+```python
+from poli_page import PoliPage
+
+def on_retry(event):
+    print(f"↻ retry attempt={event.attempt} in {event.delay_seconds:.2f}s: {event.reason.code}")
+
+def on_error(err):
+    print(f"✗ {err.code} {err.request_id or ''}: {err.message}")
+
+client = PoliPage(on_retry=on_retry, on_error=on_error)
+
+pdf = client.render.pdf({
+    "project": "billing",
+    "template": "invoice",
+    "data": {"invoiceNumber": "INV-001", "total": 1280},
+})
+```
+
+## See also
+- [Configuration](../../concepts/configuration/)
+- [Errors](../errors/)

@@ -1,0 +1,11 @@
+{
+    "codes": [
+        "invalid_api_key",
+        "invalid_template",
+        "template_not_found",
+        "data_validation_failed",
+        "rate_limited",
+        "upstream_timeout",
+        "internal_error"
+    ]
+}

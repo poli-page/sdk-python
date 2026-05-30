@@ -1,0 +1,16 @@
+---
+title: Migration
+description: Upgrade guides for moving between major versions of the Python SDK.
+---
+
+This page tracks breaking changes between major versions of `poli-page`. For the full per-release diff, see the [changelog](../changelog/).
+
+## v1.0
+
+The first stable release. The full v1.0 surface and the renames from the pre-1.0 line are documented in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).
+
+Short version: every render call now goes through a namespace (`render.pdf`, `render.preview`, `render.document`), all PDF-producing methods require project mode, and inline mode is supported only on `render.preview`.
+
+## See also
+- [Changelog](../changelog/)
+- [Render modes](../../concepts/render-modes/)

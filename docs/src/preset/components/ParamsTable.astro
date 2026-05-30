@@ -1,0 +1,37 @@
+---
+interface Param {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+  default?: string;
+}
+interface Props {
+  params: Param[];
+}
+const { params } = Astro.props;
+const showDefault = params.some((p) => p.default !== undefined);
+---
+
+<table class="pp-params-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Type</th>
+      <th>Required</th>
+      <th>Description</th>
+      {showDefault && <th>Default</th>}
+    </tr>
+  </thead>
+  <tbody>
+    {params.map((p) => (
+      <tr>
+        <td><code>{p.name}</code></td>
+        <td><code>{p.type}</code></td>
+        <td>{p.required ? 'required' : '—'}</td>
+        <td>{p.description}</td>
+        {showDefault && <td>{p.default !== undefined ? <code>{p.default}</code> : '—'}</td>}
+      </tr>
+    ))}
+  </tbody>
+</table>
