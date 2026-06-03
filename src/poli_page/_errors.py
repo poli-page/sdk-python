@@ -11,7 +11,7 @@ that don't care about granularity can still write `except PoliPageError`.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import httpx
@@ -66,6 +66,26 @@ class PoliPageError(Exception):
     def is_retryable(self) -> bool:
         return isinstance(self, (APIConnectionError, RateLimitError, InternalServerError))
 
+    def to_payload(self) -> dict[str, Any]:
+        """Canonical wire payload for framework integrations.
+
+        Returns `{code, message, status, request_id}`. `status` is the HTTP
+        status from the API for `APIStatusError`, 503 for `APIConnectionError`,
+        504 for `APITimeoutError`, and `None` for the bare base class. The
+        attribute `.status` stays unchanged for transport errors — only the
+        payload surfaces 503/504, so existing callers inspecting `.status`
+        are not affected.
+        """
+        return {
+            "code": self.code,
+            "message": self.message,
+            "status": self._payload_status(),
+            "request_id": self.request_id,
+        }
+
+    def _payload_status(self) -> int | None:
+        return self.status
+
 
 class APIConnectionError(PoliPageError):
     """Transport-layer failure: DNS, connection refused, TLS, etc.
@@ -73,9 +93,15 @@ class APIConnectionError(PoliPageError):
     Carries no HTTP status (`status is None`).
     """
 
+    def _payload_status(self) -> int | None:
+        return 503
+
 
 class APITimeoutError(APIConnectionError):
     """Per-request deadline exceeded."""
+
+    def _payload_status(self) -> int | None:
+        return 504
 
 
 class APIStatusError(PoliPageError):

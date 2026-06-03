@@ -124,6 +124,42 @@ class TestIsRetryable:
         assert err.is_retryable() is False
 
 
+class TestToPayload:
+    def test_api_status_error_uses_api_status(self) -> None:
+        err = AuthenticationError(
+            "Forbidden", code="authentication_failed", status=401, request_id="req_abc"
+        )
+        assert err.to_payload() == {
+            "code": "authentication_failed",
+            "message": "Forbidden",
+            "status": 401,
+            "request_id": "req_abc",
+        }
+
+    def test_connection_error_uses_503(self) -> None:
+        err = APIConnectionError("net down", code="network_error")
+        assert err.to_payload()["status"] == 503
+        assert err.status is None
+
+    def test_timeout_uses_504(self) -> None:
+        err = APITimeoutError("slow", code="timeout")
+        assert err.to_payload()["status"] == 504
+        assert err.status is None
+
+    def test_request_id_null_when_absent(self) -> None:
+        err = APIConnectionError("net down", code="network_error")
+        assert err.to_payload()["request_id"] is None
+
+    def test_bare_base_error_passes_through_attributes(self) -> None:
+        err = PoliPageError("cancelled", code="aborted")
+        assert err.to_payload() == {
+            "code": "aborted",
+            "message": "cancelled",
+            "status": None,
+            "request_id": None,
+        }
+
+
 class TestClassify:
     @pytest.mark.parametrize(
         ("status", "expected_cls"),

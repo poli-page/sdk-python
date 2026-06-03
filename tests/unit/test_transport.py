@@ -120,26 +120,23 @@ class TestParseErrorBody:
         )
         assert result == {"code": "VALIDATION_ERROR", "message": "data is required"}
 
-    def test_falls_back_to_message_as_code_when_code_absent(self) -> None:
+    def test_code_stays_unknown_when_only_message_present(self) -> None:
         result = parse_error_body('{"message":"something broke"}', status=400)
-        assert result == {"code": "something broke", "message": "something broke"}
+        assert result == {"code": "unknown_error", "message": "something broke"}
 
     def test_falls_back_to_error_field_as_code(self) -> None:
         result = parse_error_body('{"error":"oops"}', status=400)
-        assert result == {"code": "oops", "message": "API error (400): oops"}
+        assert result == {"code": "oops", "message": "HTTP 400"}
 
     def test_unknown_error_when_json_has_no_recognised_fields(self) -> None:
         result = parse_error_body("{}", status=400)
-        assert result == {
-            "code": "unknown_error",
-            "message": "API error (400): unknown_error",
-        }
+        assert result == {"code": "unknown_error", "message": "HTTP 400"}
 
     def test_internal_error_when_body_not_valid_json(self) -> None:
         result = parse_error_body("not json", status=502)
         assert result == {
             "code": "INTERNAL_ERROR",
-            "message": "API error 502: response body was not valid JSON",
+            "message": "HTTP 502: response body was not valid JSON",
         }
 
     def test_internal_error_for_html_error_pages(self) -> None:
@@ -150,6 +147,30 @@ class TestParseErrorBody:
     def test_internal_error_for_empty_body(self) -> None:
         result = parse_error_body("", status=500)
         assert result["code"] == "INTERNAL_ERROR"
+
+    def test_uses_rfc7807_detail_as_message(self) -> None:
+        result = parse_error_body(
+            '{"code":"authentication_failed","detail":"Forbidden","title":"Authentication failed"}',
+            status=401,
+        )
+        assert result == {"code": "authentication_failed", "message": "Forbidden"}
+
+    def test_falls_back_to_title_when_detail_absent(self) -> None:
+        result = parse_error_body('{"code":"forbidden","title":"Access denied"}', status=403)
+        assert result == {"code": "forbidden", "message": "Access denied"}
+
+    def test_falls_back_to_legacy_message_field(self) -> None:
+        result = parse_error_body('{"code":"X","message":"something broke"}', status=400)
+        assert result == {"code": "X", "message": "something broke"}
+
+    def test_no_synthesised_api_error_prefix(self) -> None:
+        result = parse_error_body('{"code":"THUMBNAILS_NOT_AVAILABLE"}', status=403)
+        assert result == {"code": "THUMBNAILS_NOT_AVAILABLE", "message": "HTTP 403"}
+        assert "API error" not in result["message"]
+
+    def test_code_never_inferred_from_message(self) -> None:
+        result = parse_error_body('{"message":"something broke"}', status=400)
+        assert result == {"code": "unknown_error", "message": "something broke"}
 
 
 class TestBuildHeaders:

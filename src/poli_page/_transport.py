@@ -133,9 +133,11 @@ def compute_backoff(attempt: int, base_delay: float, retry_after: float | None) 
 def parse_error_body(body: str, *, status: int) -> dict[str, str]:
     """Parse a non-2xx response body into `{code, message}`.
 
-    Fallback chain: `code → message → error → 'unknown_error'`. Bodies that
-    are not parseable JSON (or are valid JSON but not an object) surface as
-    `INTERNAL_ERROR` with a status-bearing message.
+    The API speaks RFC 7807 ProblemDetails. Message preference: `detail`
+    (specific reason) → `title` (generic problem name) → `message` (legacy
+    non-7807 endpoints) → short canned `HTTP <status>`. The code is whatever
+    the API sends verbatim; we never invent one from the message. Bodies
+    that aren't valid JSON objects surface as `INTERNAL_ERROR`.
     """
     try:
         raw = json.loads(body)
@@ -144,17 +146,17 @@ def parse_error_body(body: str, *, status: int) -> dict[str, str]:
     if not isinstance(raw, dict):
         return _internal_error(status)
     parsed = cast(dict[str, Any], raw)
-    code: str = (
-        parsed.get("code") or parsed.get("message") or parsed.get("error") or "unknown_error"
+    code: str = parsed.get("code") or parsed.get("error") or "unknown_error"
+    message: str = (
+        parsed.get("detail") or parsed.get("title") or parsed.get("message") or f"HTTP {status}"
     )
-    message: str = parsed.get("message") or f"API error ({status}): {code}"
     return {"code": code, "message": message}
 
 
 def _internal_error(status: int) -> dict[str, str]:
     return {
         "code": "INTERNAL_ERROR",
-        "message": f"API error {status}: response body was not valid JSON",
+        "message": f"HTTP {status}: response body was not valid JSON",
     }
 
 
