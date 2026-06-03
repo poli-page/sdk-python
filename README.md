@@ -302,7 +302,7 @@ except PoliPageError as err:
 
 → Full error reference: https://poli-page.github.io/sdk-python/reference/errors/
 
-## Cancellation & timeouts
+## Cancellation
 
 Per-call timeout (overrides the client-level `timeout`):
 
@@ -372,11 +372,15 @@ client = PoliPage(
 
 The SDK retries on **5xx**, **429**, **network errors**, and **timeouts**. Backoff is exponential (`retry_delay * 2^N`) with jitter in `[0.5, 1.5)`, capped by `Retry-After` (seconds, HTTP-date) or `Retry-After-Ms` when the server provides them — capped further at 30 s. Every POST sends an auto-generated `Idempotency-Key` (UUID v4); pass `idempotency_key` in the input dict to override.
 
-## Type hints
+## Type system
 
 `py.typed` ships in the wheel. Strict-mode-clean against pyright; mypy strict on `src/` is green in CI as well.
 
 `RenderInput` is a union of two `TypedDict`s (`ProjectModeInput` + `InlineModeInput`); the SDK enforces the project-mode-only constraint on `render.pdf` / `pdf_stream` / `document` at runtime in addition to static checks.
+
+## Concurrency & thread-safety
+
+The sync client is thread-safe — share a single instance across threads. The async client (`PoliPageAsync`) is safe to share across asyncio tasks. The client carries no per-request mutable state, so a single instance per process is the expected pattern.
 
 ## Runtime support
 
