@@ -371,6 +371,29 @@ class TestHooks:
         assert events[1].attempt == 3
 
     @respx.mock
+    async def test_on_request_fires_before_each_attempt(self) -> None:
+        from poli_page import RequestEvent
+
+        events: list[RequestEvent] = []
+        responses = [
+            httpx.Response(500, json={"code": "boom"}),
+            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+        ]
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        async with AsyncPoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            max_retries=2,
+            retry_delay=0.01,
+            on_request=events.append,
+        ) as client:
+            await client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert len(events) == 2
+        assert events[0].method == "POST"
+        assert events[0].attempt == 1
+        assert events[1].attempt == 2
+
+    @respx.mock
     async def test_on_error_fires_on_terminal_failure(self) -> None:
         errors: list[PoliPageError] = []
         respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(

@@ -96,6 +96,7 @@ class AsyncPoliPage:
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = DEFAULT_RETRY_DELAY_SECONDS,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        on_request: Any = None,
         on_retry: Any = None,
         on_error: Any = None,
         http_client: httpx.AsyncClient | None = None,
@@ -112,6 +113,7 @@ class AsyncPoliPage:
         self.max_retries: int = max_retries
         self.retry_delay: float = retry_delay
         self.timeout: float = timeout
+        self._on_request = on_request
         self._on_retry = on_retry
         self._on_error = on_error
         self._user_agent: str = f"{USER_AGENT_PREFIX}/{__version__}"
@@ -149,6 +151,7 @@ class AsyncPoliPage:
         max_retries: int | None = None,
         retry_delay: float | None = None,
         timeout: float | None = None,
+        on_request: Any = None,
         on_retry: Any = None,
         on_error: Any = None,
         http_client: httpx.AsyncClient | None = None,
@@ -166,6 +169,7 @@ class AsyncPoliPage:
             max_retries=max_retries if max_retries is not None else self.max_retries,
             retry_delay=retry_delay if retry_delay is not None else self.retry_delay,
             timeout=timeout if timeout is not None else self.timeout,
+            on_request=on_request if on_request is not None else self._on_request,
             on_retry=on_retry if on_retry is not None else self._on_retry,
             on_error=on_error if on_error is not None else self._on_error,
             http_client=http_client,
@@ -218,7 +222,7 @@ class AsyncPoliPage:
                 self._fire_retry(attempt + 1, delay, last_error)
                 await asyncio.sleep(delay)
 
-            outcome = await self._send_once(method, path, body, idempotency_key)
+            outcome = await self._send_once(method, path, body, idempotency_key, attempt + 1)
             if outcome.response is not None:
                 return outcome.response
 
@@ -240,6 +244,7 @@ class AsyncPoliPage:
         path: str,
         body: dict[str, Any] | None,
         idempotency_key: str | None,
+        attempt: int = 1,
     ) -> _Attempt:
         url = build_url(self.base_url, path)
         headers = build_headers(
@@ -248,6 +253,7 @@ class AsyncPoliPage:
             idempotency_key=idempotency_key,
             user_agent=self._user_agent,
         )
+        self._fire_request(method, url, attempt)
 
         try:
             response = await self._http_client.request(
@@ -334,6 +340,17 @@ class AsyncPoliPage:
     # ------------------------------------------------------------------
     # Hooks — sync callables; mirror the sync client (plan §10.3).
     # ------------------------------------------------------------------
+
+    def _fire_request(self, method: HttpMethod, url: str, attempt: int) -> None:
+        if self._on_request is None:
+            return
+        from poli_page.types import RequestEvent
+
+        event = RequestEvent(method=method, url=url, attempt=attempt)
+        try:
+            self._on_request(event)
+        except Exception:
+            logger.debug("poli_page: on_request hook raised; suppressed", exc_info=True)
 
     def _fire_retry(self, attempt: int, delay: float, reason: PoliPageError) -> None:
         if self._on_retry is None:
