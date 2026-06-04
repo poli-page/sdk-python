@@ -433,6 +433,27 @@ class TestHooks:
         assert events == []
 
     @respx.mock
+    async def test_on_retry_event_delay_is_milliseconds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        events: list[RetryEvent] = []
+        responses = [
+            httpx.Response(503, json={"code": "down"}, headers={"Retry-After-Ms": "250"}),
+            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+        ]
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        async with AsyncPoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            max_retries=2,
+            retry_delay=10.0,
+            on_retry=events.append,
+        ) as client:
+            await client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert len(events) == 1
+        assert events[0].delay_ms == 250.0
+
+    @respx.mock
     async def test_on_error_fires_on_terminal_failure(self) -> None:
         errors: list[PoliPageError] = []
         respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(

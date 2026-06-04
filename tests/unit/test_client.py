@@ -758,6 +758,28 @@ class TestHooks:
         assert events[0].request_id is None
 
 
+    @respx.mock
+    def test_on_retry_event_delay_is_milliseconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Force compute_backoff to return exactly 0.25 seconds via Retry-After-Ms.
+        events: list[RetryEvent] = []
+        responses = [
+            httpx.Response(503, json={"code": "down"}, headers={"Retry-After-Ms": "250"}),
+            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+        ]
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        client = PoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            max_retries=2,
+            retry_delay=10.0,
+            on_retry=events.append,
+        )
+        client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert len(events) == 1
+        # 250 ms server-instructed delay → event.delay_ms == 250.0
+        assert events[0].delay_ms == 250.0
+
+
 class TestEventDataclasses:
     """Per-attempt + per-retry event payloads exposed via constructor hooks."""
 
