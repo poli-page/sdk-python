@@ -204,18 +204,48 @@ class AsyncDocumentDescriptor(_DocumentDescriptorBase):
 
 
 @dataclass(frozen=True, slots=True)
+class RequestEvent:
+    """Event passed to the `on_request` hook before each HTTP attempt."""
+
+    method: str
+    """HTTP verb: 'GET', 'POST', 'DELETE'."""
+
+    url: str
+    """Fully-qualified request URL (base_url + path)."""
+
+    attempt: int
+    """1-based attempt number. 1 = initial; 2 = first retry; etc."""
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseEvent:
+    """Event passed to the `on_response` hook after a successful (2xx) response."""
+
+    status: int
+    """HTTP status code (always 2xx — non-2xx fires `on_error`/`on_retry` instead)."""
+
+    request_id: str | None
+    """Server-issued `x-request-id` header value, if present."""
+
+    duration_ms: float
+    """Wall-clock round-trip time for the underlying httpx call, in milliseconds."""
+
+
+@dataclass(frozen=True, slots=True)
 class RetryEvent:
     """Event passed to the `on_retry` hook before each retry sleep."""
 
     attempt: int
     """1-based; the attempt about to be made (2 = first retry)."""
 
-    delay_seconds: float
-    """The sleep duration before this attempt."""
+    delay_ms: float
+    """The sleep duration before this attempt, in milliseconds (D3 / Plan 0)."""
 
     reason: PoliPageError
     """The error that triggered the retry."""
 
 
+OnRequest = Callable[[RequestEvent], None]
+OnResponse = Callable[[ResponseEvent], None]
 OnRetry = Callable[[RetryEvent], None]
 OnError = Callable[[PoliPageError], None]

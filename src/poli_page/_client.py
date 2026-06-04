@@ -352,7 +352,7 @@ class PoliPage:
             return
         from poli_page.types import RetryEvent
 
-        event = RetryEvent(attempt=attempt, delay_seconds=delay, reason=reason)
+        event = RetryEvent(attempt=attempt, delay_ms=delay, reason=reason)
         logger.info(
             "poli_page: retrying attempt=%d delay=%.3fs reason=%s", attempt, delay, reason.code
         )

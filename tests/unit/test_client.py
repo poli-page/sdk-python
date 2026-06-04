@@ -658,3 +658,45 @@ class TestHooks:
         # on retry/error paths and must be swallowed).
         result = client.render.preview({"template": "<p>x</p>", "data": {}})
         assert result.html == "ok"
+
+
+class TestEventDataclasses:
+    """Per-attempt + per-retry event payloads exposed via constructor hooks."""
+
+    def test_request_event_fields(self) -> None:
+        from poli_page import RequestEvent
+
+        ev = RequestEvent(method="POST", url="https://x/y", attempt=2)
+        assert ev.method == "POST"
+        assert ev.url == "https://x/y"
+        assert ev.attempt == 2
+
+    def test_request_event_is_frozen(self) -> None:
+        from poli_page import RequestEvent
+
+        ev = RequestEvent(method="GET", url="https://x", attempt=1)
+        with pytest.raises((AttributeError, Exception)):
+            ev.attempt = 99  # type: ignore[misc]
+
+    def test_response_event_fields(self) -> None:
+        from poli_page import ResponseEvent
+
+        ev = ResponseEvent(status=200, request_id="req_abc", duration_ms=12.5)
+        assert ev.status == 200
+        assert ev.request_id == "req_abc"
+        assert ev.duration_ms == 12.5
+
+    def test_response_event_request_id_optional(self) -> None:
+        from poli_page import ResponseEvent
+
+        ev = ResponseEvent(status=204, request_id=None, duration_ms=1.0)
+        assert ev.request_id is None
+
+    def test_retry_event_uses_delay_ms_not_delay_seconds(self) -> None:
+        from poli_page import RetryEvent
+
+        err = PoliPageError("boom", code="INTERNAL_ERROR", status=500)
+        ev = RetryEvent(attempt=2, delay_ms=250.0, reason=err)
+        assert ev.delay_ms == 250.0
+        # The old field name must be gone — fail loud if anyone still reads it.
+        assert not hasattr(ev, "delay_seconds")
