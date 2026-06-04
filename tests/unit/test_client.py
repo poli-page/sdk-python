@@ -660,6 +660,48 @@ class TestHooks:
         assert result.html == "ok"
 
 
+    @respx.mock
+    def test_on_request_fires_before_each_attempt(self) -> None:
+        from poli_page import RequestEvent
+
+        events: list[RequestEvent] = []
+        responses = [
+            httpx.Response(500, json={"code": "boom"}),
+            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+        ]
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        client = PoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            max_retries=2,
+            retry_delay=0.01,
+            on_request=events.append,
+        )
+        client.render.preview({"template": "<p>x</p>", "data": {}})
+        # Two attempts (initial + 1 retry).
+        assert len(events) == 2
+        assert events[0].method == "POST"
+        assert events[0].url == f"{TEST_BASE_URL}/v1/render/preview"
+        assert events[0].attempt == 1
+        assert events[1].attempt == 2
+
+    @respx.mock
+    def test_on_request_hook_exception_does_not_break_request(self) -> None:
+        def hostile(_e: object) -> None:
+            raise RuntimeError("boom")
+
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(
+                200, json={"html": "ok", "totalPages": 1, "environment": "sandbox"}
+            )
+        )
+        client = PoliPage(
+            api_key="pp_test_abc", base_url=TEST_BASE_URL, on_request=hostile
+        )
+        result = client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert result.html == "ok"
+
+
 class TestEventDataclasses:
     """Per-attempt + per-retry event payloads exposed via constructor hooks."""
 
