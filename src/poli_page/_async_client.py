@@ -202,8 +202,11 @@ class AsyncPoliPage:
         *,
         body: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
-        response = await self._request(method, path, body=body, idempotency_key=idempotency_key)
+        response = await self._request(
+            method, path, body=body, idempotency_key=idempotency_key, timeout=timeout
+        )
         return cast(dict[str, Any], response.json())
 
     async def _request(
@@ -213,6 +216,7 @@ class AsyncPoliPage:
         *,
         body: dict[str, Any] | None,
         idempotency_key: str | None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         if method == "POST" and idempotency_key is None:
             idempotency_key = str(uuid.uuid4())
@@ -227,7 +231,7 @@ class AsyncPoliPage:
                 self._fire_retry(attempt + 1, delay, last_error)
                 await asyncio.sleep(delay)
 
-            outcome = await self._send_once(method, path, body, idempotency_key, attempt + 1)
+            outcome = await self._send_once(method, path, body, idempotency_key, attempt + 1, timeout)
             if outcome.response is not None:
                 return outcome.response
 
@@ -250,6 +254,7 @@ class AsyncPoliPage:
         body: dict[str, Any] | None,
         idempotency_key: str | None,
         attempt: int = 1,
+        timeout: float | None = None,
     ) -> _Attempt:
         url = build_url(self.base_url, path)
         headers = build_headers(
@@ -262,9 +267,13 @@ class AsyncPoliPage:
 
         _t0 = time.perf_counter()
         try:
-            response = await self._http_client.request(
-                method, url, headers=headers, json=body if method == "POST" else None
-            )
+            _kwargs: dict[str, Any] = {
+                "headers": headers,
+                "json": body if method == "POST" else None,
+            }
+            if timeout is not None:
+                _kwargs["timeout"] = timeout
+            response = await self._http_client.request(method, url, **_kwargs)
         except httpx.TimeoutException as exc:
             timeout_err = APITimeoutError(
                 f"Request timed out after {self.timeout}s",

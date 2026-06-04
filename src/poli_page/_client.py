@@ -203,6 +203,7 @@ class PoliPage:
         *,
         body: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Send a request and return the JSON body as a dict.
 
@@ -210,7 +211,9 @@ class PoliPage:
         via `to_wire`). On any non-2xx the classified `PoliPageError`
         subclass is raised after retries are exhausted.
         """
-        response = self._request(method, path, body=body, idempotency_key=idempotency_key)
+        response = self._request(
+            method, path, body=body, idempotency_key=idempotency_key, timeout=timeout
+        )
         return cast(dict[str, Any], response.json())
 
     def _request(
@@ -220,6 +223,7 @@ class PoliPage:
         *,
         body: dict[str, Any] | None,
         idempotency_key: str | None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         if method == "POST" and idempotency_key is None:
             idempotency_key = str(uuid.uuid4())
@@ -234,7 +238,7 @@ class PoliPage:
                 self._fire_retry(attempt + 1, delay, last_error)
                 time.sleep(delay)
 
-            outcome = self._send_once(method, path, body, idempotency_key, attempt + 1)
+            outcome = self._send_once(method, path, body, idempotency_key, attempt + 1, timeout)
             if outcome.response is not None:
                 return outcome.response
 
@@ -258,6 +262,7 @@ class PoliPage:
         body: dict[str, Any] | None,
         idempotency_key: str | None,
         attempt: int = 1,
+        timeout: float | None = None,
     ) -> _Attempt:
         url = build_url(self.base_url, path)
         headers = build_headers(
@@ -270,9 +275,13 @@ class PoliPage:
 
         _t0 = time.perf_counter()
         try:
-            response = self._http_client.request(
-                method, url, headers=headers, json=body if method == "POST" else None
-            )
+            _kwargs: dict[str, Any] = {
+                "headers": headers,
+                "json": body if method == "POST" else None,
+            }
+            if timeout is not None:
+                _kwargs["timeout"] = timeout
+            response = self._http_client.request(method, url, **_kwargs)
         except httpx.TimeoutException as exc:
             timeout_err = APITimeoutError(
                 f"Request timed out after {self.timeout}s",

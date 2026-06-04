@@ -780,6 +780,60 @@ class TestHooks:
         assert events[0].delay_ms == 250.0
 
 
+class TestPerCallTimeout:
+    """Per-call `timeout` input field plumbs through to httpx.request."""
+
+    @respx.mock
+    def test_per_call_timeout_overrides_client_default(self) -> None:
+        # Capture the timeout kwarg httpx received for the request.
+        captured: dict[str, object] = {}
+        real_request = httpx.Client.request
+
+        def spy(self: httpx.Client, *args: object, **kwargs: object) -> httpx.Response:
+            captured.update(kwargs)
+            return real_request(self, *args, **kwargs)
+
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(
+                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
+            )
+        )
+        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, timeout=60.0)
+        # Monkey-patch via context — we don't want global side-effects.
+        with pytest.MonkeyPatch().context() as mp:
+            mp.setattr(httpx.Client, "request", spy)
+            client.render.preview(
+                {"template": "<p>x</p>", "data": {}, "timeout": 5.0}
+            )
+        # httpx accepts `timeout` as a float or httpx.Timeout.
+        assert "timeout" in captured
+        # Either a bare float of 5.0, or an httpx.Timeout configured to 5.0.
+        tv = captured["timeout"]
+        assert tv == 5.0 or (isinstance(tv, httpx.Timeout) and tv.read == 5.0)
+
+    @respx.mock
+    def test_no_per_call_timeout_uses_client_default(self) -> None:
+        captured: dict[str, object] = {}
+        real_request = httpx.Client.request
+
+        def spy(self: httpx.Client, *args: object, **kwargs: object) -> httpx.Response:
+            captured.update(kwargs)
+            return real_request(self, *args, **kwargs)
+
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(
+                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
+            )
+        )
+        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, timeout=42.0)
+        with pytest.MonkeyPatch().context() as mp:
+            mp.setattr(httpx.Client, "request", spy)
+            client.render.preview({"template": "<p>x</p>", "data": {}})
+        # No per-call timeout was provided — httpx.request is called without
+        # an explicit timeout kwarg, so it inherits the client-level timeout.
+        assert "timeout" not in captured
+
+
 class TestEventDataclasses:
     """Per-attempt + per-retry event payloads exposed via constructor hooks."""
 

@@ -48,9 +48,10 @@ class RenderSync:
     def preview(self, input: RenderInput) -> PreviewResult:
         """Generate paginated HTML preview output (spec §5.3)."""
         idempotency_key = input.get("idempotency_key")
+        timeout = cast("float | None", input.get("timeout"))
         body = to_wire(input)
         raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key
+            "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         return _make_preview_result(raw)
 
@@ -58,9 +59,10 @@ class RenderSync:
         """Render a PDF, store it server-side, return the descriptor (spec §5.2)."""
         _require_project_mode(input)
         idempotency_key = input.get("idempotency_key")
+        timeout = cast("float | None", input.get("timeout"))
         body = to_wire(input)
         raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key
+            "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         return _build_descriptor(self._client, raw)
 
@@ -88,18 +90,20 @@ class RenderAsync:
 
     async def preview(self, input: RenderInput) -> PreviewResult:
         idempotency_key = input.get("idempotency_key")
+        timeout = cast("float | None", input.get("timeout"))
         body = to_wire(input)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key
+            "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         return _make_preview_result(raw)
 
     async def document(self, input: ProjectModeInput) -> AsyncDocumentDescriptor:
         _require_project_mode(input)
         idempotency_key = input.get("idempotency_key")
+        timeout = cast("float | None", input.get("timeout"))
         body = to_wire(input)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key
+            "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         return _build_async_descriptor(self._client, raw)
 
@@ -228,9 +232,10 @@ class _AsyncPdfStreamCoroutineCM:
     async def __aenter__(self) -> AsyncIterator[bytes]:
         _require_project_mode(self._input)
         idempotency_key = self._input.get("idempotency_key")
+        timeout = cast("float | None", self._input.get("timeout"))
         body = to_wire(self._input)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key
+            "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         descriptor = _build_async_descriptor(self._client, raw)
         cm = self._client._stream_bytes(descriptor.presigned_pdf_url)  # pyright: ignore[reportPrivateUsage]

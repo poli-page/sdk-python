@@ -75,9 +75,11 @@ class DocumentsSync:
         Request body wraps options as `{thumbnails: <options>}`; response
         unwraps `{thumbnails: [...]}`.
         """
-        body = {"thumbnails": to_wire(cast(dict[str, object], options))}
+        opts_dict = cast(dict[str, object], options)
+        timeout = cast("float | None", opts_dict.get("timeout"))
+        body = {"thumbnails": to_wire(opts_dict)}
         raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", path_document_thumbnails(id), body=body, idempotency_key=None
+            "POST", path_document_thumbnails(id), body=body, idempotency_key=None, timeout=timeout
         )
         items = cast(list[dict[str, object]], raw["thumbnails"])
         return [_make_thumbnail(item) for item in items]
@@ -120,9 +122,11 @@ class DocumentsAsync:
         )
 
     async def thumbnails(self, id: str, options: ThumbnailOptions) -> list[Thumbnail]:
-        body = {"thumbnails": to_wire(cast(dict[str, object], options))}
+        opts_dict = cast(dict[str, object], options)
+        timeout = cast("float | None", opts_dict.get("timeout"))
+        body = {"thumbnails": to_wire(opts_dict)}
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", path_document_thumbnails(id), body=body, idempotency_key=None
+            "POST", path_document_thumbnails(id), body=body, idempotency_key=None, timeout=timeout
         )
         items = cast(list[dict[str, object]], raw["thumbnails"])
         return [_make_thumbnail(item) for item in items]
