@@ -702,6 +702,62 @@ class TestHooks:
         assert result.html == "ok"
 
 
+    @respx.mock
+    def test_on_response_fires_on_success(self) -> None:
+        from poli_page import ResponseEvent
+
+        events: list[ResponseEvent] = []
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(
+                200,
+                json={"html": "", "totalPages": 1, "environment": "sandbox"},
+                headers={"x-request-id": "req_xyz"},
+            )
+        )
+        client = PoliPage(
+            api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append
+        )
+        client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert len(events) == 1
+        assert events[0].status == 200
+        assert events[0].request_id == "req_xyz"
+        assert events[0].duration_ms >= 0.0  # non-negative wall-clock
+
+    @respx.mock
+    def test_on_response_not_fired_on_error_responses(self) -> None:
+        from poli_page import ResponseEvent
+
+        events: list[ResponseEvent] = []
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(500, json={"code": "boom"})
+        )
+        client = PoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            max_retries=0,
+            on_response=events.append,
+        )
+        with pytest.raises(InternalServerError):
+            client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert events == []
+
+    @respx.mock
+    def test_on_response_request_id_none_when_header_missing(self) -> None:
+        from poli_page import ResponseEvent
+
+        events: list[ResponseEvent] = []
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(
+                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
+            )
+        )
+        client = PoliPage(
+            api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append
+        )
+        client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert events[0].request_id is None
+
+
 class TestEventDataclasses:
     """Per-attempt + per-retry event payloads exposed via constructor hooks."""
 
