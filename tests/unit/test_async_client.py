@@ -394,6 +394,45 @@ class TestHooks:
         assert events[1].attempt == 2
 
     @respx.mock
+    async def test_on_response_fires_on_success(self) -> None:
+        from poli_page import ResponseEvent
+
+        events: list[ResponseEvent] = []
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(
+                200,
+                json={"html": "", "totalPages": 1, "environment": "sandbox"},
+                headers={"x-request-id": "req_async"},
+            )
+        )
+        async with AsyncPoliPage(
+            api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append
+        ) as client:
+            await client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert len(events) == 1
+        assert events[0].status == 200
+        assert events[0].request_id == "req_async"
+        assert events[0].duration_ms >= 0.0
+
+    @respx.mock
+    async def test_on_response_not_fired_on_error_responses(self) -> None:
+        from poli_page import ResponseEvent
+
+        events: list[ResponseEvent] = []
+        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+            return_value=httpx.Response(500, json={"code": "boom"})
+        )
+        async with AsyncPoliPage(
+            api_key="pp_test_abc",
+            base_url=TEST_BASE_URL,
+            max_retries=0,
+            on_response=events.append,
+        ) as client:
+            with pytest.raises(InternalServerError):
+                await client.render.preview({"template": "<p>x</p>", "data": {}})
+        assert events == []
+
+    @respx.mock
     async def test_on_error_fires_on_terminal_failure(self) -> None:
         errors: list[PoliPageError] = []
         respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
