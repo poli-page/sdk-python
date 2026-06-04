@@ -1,6 +1,7 @@
 from poli_page import error_codes
 from poli_page._async_client import AsyncPoliPage
 from poli_page._client import PoliPage
+from poli_page.fs import async_render_to_file, render_to_file
 from poli_page._errors import (
     APIConnectionError,
     APIStatusError,
@@ -77,5 +78,7 @@ __all__ = [
     "ThumbnailOptions",
     "UnprocessableEntityError",
     "__version__",
+    "async_render_to_file",
     "error_codes",
+    "render_to_file",
 ]

@@ -113,6 +113,31 @@ class TestRenderToFileSync:
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
 
 
+class TestPackageRootReExport:
+    """fs.py helpers must be importable from the package root for discoverability."""
+
+    def test_render_to_file_importable_from_package_root(self) -> None:
+        # Symbol must be the SAME function object as the one in poli_page.fs.
+        import poli_page
+        import poli_page.fs
+
+        assert hasattr(poli_page, "render_to_file")
+        assert poli_page.render_to_file is poli_page.fs.render_to_file
+
+    def test_async_render_to_file_importable_from_package_root(self) -> None:
+        import poli_page
+        import poli_page.fs
+
+        assert hasattr(poli_page, "async_render_to_file")
+        assert poli_page.async_render_to_file is poli_page.fs.async_render_to_file
+
+    def test_helpers_in_dunder_all(self) -> None:
+        import poli_page
+
+        assert "render_to_file" in poli_page.__all__
+        assert "async_render_to_file" in poli_page.__all__
+
+
 class TestAsyncRenderToFile:
     @respx.mock
     async def test_writes_pdf_with_magic_bytes(self, tmp_path: Path) -> None:
