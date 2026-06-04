@@ -133,7 +133,7 @@ class TestToPayload:
             "code": "authentication_failed",
             "message": "Forbidden",
             "status": 401,
-            "request_id": "req_abc",
+            "requestId": "req_abc",
         }
 
     def test_connection_error_uses_503(self) -> None:
@@ -146,9 +146,13 @@ class TestToPayload:
         assert err.to_payload()["status"] == 504
         assert err.status is None
 
-    def test_request_id_null_when_absent(self) -> None:
+    def test_request_id_uses_camelcase_wire_key(self) -> None:
+        # D2 / Plan 0 — payload keys are wire format (camelCase).
         err = APIConnectionError("net down", code="network_error")
-        assert err.to_payload()["request_id"] is None
+        payload = err.to_payload()
+        assert "requestId" in payload
+        assert "request_id" not in payload
+        assert payload["requestId"] is None
 
     def test_bare_base_error_passes_through_attributes(self) -> None:
         err = PoliPageError("cancelled", code="aborted")
@@ -156,7 +160,7 @@ class TestToPayload:
             "code": "aborted",
             "message": "cancelled",
             "status": None,
-            "request_id": None,
+            "requestId": None,
         }
 
 

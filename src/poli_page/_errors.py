@@ -69,18 +69,20 @@ class PoliPageError(Exception):
     def to_payload(self) -> dict[str, Any]:
         """Canonical wire payload for framework integrations.
 
-        Returns `{code, message, status, request_id}`. `status` is the HTTP
-        status from the API for `APIStatusError`, 503 for `APIConnectionError`,
-        504 for `APITimeoutError`, and `None` for the bare base class. The
-        attribute `.status` stays unchanged for transport errors — only the
-        payload surfaces 503/504, so existing callers inspecting `.status`
-        are not affected.
+        Returns `{code, message, status, requestId}`. Keys are camelCase by
+        design — this dict is wire format meant to be serialised as JSON and
+        forwarded to a client (D2 / Plan 0). Python attributes (`request_id`)
+        stay snake_case; only the payload surfaces camelCase.
+
+        `status` is the HTTP status from the API for `APIStatusError`, 503 for
+        `APIConnectionError`, 504 for `APITimeoutError`, and `None` for the
+        bare base class.
         """
         return {
             "code": self.code,
             "message": self.message,
             "status": self._payload_status(),
-            "request_id": self.request_id,
+            "requestId": self.request_id,
         }
 
     def _payload_status(self) -> int | None:
