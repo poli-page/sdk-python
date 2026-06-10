@@ -1,9 +1,8 @@
 """Live-API integration test: full async round-trip.
 
-Hits api-develop.poli.page. Exercises the async surface end-to-end:
-preview (inline), pdf (project), document.download_pdf, pdf_stream,
-documents.get, documents.preview, documents.thumbnails (tier-aware),
-documents.delete, and the 410-GONE re-get.
+Exercises the async surface end-to-end: preview (inline), pdf (project),
+document.download_pdf, pdf_stream, documents.get, documents.preview,
+documents.thumbnails (tier-aware), documents.delete, and the 410-GONE re-get.
 """
 
 from __future__ import annotations

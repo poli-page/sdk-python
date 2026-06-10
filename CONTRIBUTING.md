@@ -74,12 +74,6 @@ export POLI_PAGE_API_KEY=pp_test_...
 pytest tests/integration/ -m integration
 ```
 
-To target the develop environment while exploring:
-
-```bash
-export POLI_PAGE_BASE_URL=https://api-develop.poli.page
-```
-
 The full set of integration tests round-trips every public method against
 the auto-provisioned `getting-started/welcome/1.0.0` template.
 

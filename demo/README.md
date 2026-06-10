@@ -28,12 +28,6 @@ To pre-populate without the prompt:
 echo 'POLI_PAGE_API_KEY=pp_test_your_key_here' > .env
 ```
 
-To target the develop environment (recommended while exploring):
-
-```bash
-echo 'POLI_PAGE_BASE_URL=https://api-develop.poli.page' >> .env
-```
-
 ## What the demos do
 
 Both demos walk the SDK's full surface in this order:

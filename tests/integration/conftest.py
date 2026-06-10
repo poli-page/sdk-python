@@ -1,9 +1,8 @@
 """Shared fixtures for integration tests (hit the live API).
 
-Mirror the Node SDK's tests/integration/ env-var conventions so both SDKs
-can be driven by the same CI secrets:
+Env-var conventions shared across SDKs so the same CI secrets drive them all:
 - POLI_PAGE_API_KEY (required; tests skip when unset)
-- POLI_PAGE_BASE_URL (default https://api-develop.poli.page)
+- POLI_PAGE_TEST_BASE_URL (optional; SDK default applies when unset)
 - POLI_PAGE_TEST_PROJECT / TEMPLATE / VERSION (overrides for the test template)
 """
 
@@ -26,8 +25,8 @@ def api_key() -> str:
 
 
 @pytest.fixture(scope="module")
-def base_url() -> str:
-    return os.environ.get("POLI_PAGE_BASE_URL", "https://api-develop.poli.page")
+def base_url() -> str | None:
+    return os.environ.get("POLI_PAGE_TEST_BASE_URL")
 
 
 @pytest.fixture(scope="module")
@@ -46,6 +45,9 @@ def test_version() -> str:
 
 
 @pytest.fixture
-def client(api_key: str, base_url: str) -> Iterator[PoliPage]:
-    with PoliPage(api_key=api_key, base_url=base_url) as c:
+def client(api_key: str, base_url: str | None) -> Iterator[PoliPage]:
+    kwargs: dict[str, str] = {"api_key": api_key}
+    if base_url is not None:
+        kwargs["base_url"] = base_url
+    with PoliPage(**kwargs) as c:
         yield c

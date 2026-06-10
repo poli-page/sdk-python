@@ -64,3 +64,8 @@ docs/src/content/docs/reference/
 
 # Extractor cache
 scripts/extract-api/.cache/
+CLAUDE.md
+docs/plan/
+docs/spec/
+sdk-*-plan.md
+sdk-*-specifications.md

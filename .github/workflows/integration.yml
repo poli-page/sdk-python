@@ -1,8 +1,8 @@
 name: Integration
 
-# Live-API integration tests against api-develop.poli.page. Gated on the
-# repository secret POLI_PAGE_API_KEY (pp_test_*); jobs no-op when unset.
-# Runs on push to main + nightly so PRs stay snappy.
+# Live-API integration tests. Gated on the repository secret POLI_PAGE_API_KEY
+# (pp_test_*); jobs no-op when unset. Runs on push to main + nightly so PRs
+# stay snappy.
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     env:
       POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
-      POLI_PAGE_BASE_URL: ${{ secrets.POLI_PAGE_BASE_URL || 'https://api-develop.poli.page' }}
+      POLI_PAGE_TEST_BASE_URL: ${{ secrets.POLI_PAGE_TEST_BASE_URL }}
       POLI_PAGE_TEST_PROJECT: ${{ vars.POLI_PAGE_TEST_PROJECT || 'getting-started' }}
       POLI_PAGE_TEST_TEMPLATE: ${{ vars.POLI_PAGE_TEST_TEMPLATE || 'welcome' }}
       POLI_PAGE_TEST_VERSION: ${{ vars.POLI_PAGE_TEST_VERSION || '1.0.0' }}

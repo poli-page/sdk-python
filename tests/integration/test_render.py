@@ -1,7 +1,7 @@
 """Live-API integration tests for `render.pdf`, `render.pdf_stream`, `render.document`.
 
-Gated on `POLI_PAGE_API_KEY`. Hits api-develop.poli.page with the
-`getting-started/welcome` template provisioned for every Poli Page org.
+Gated on `POLI_PAGE_API_KEY`. Uses the `getting-started/welcome` template
+provisioned for every Poli Page org.
 """
 
 from __future__ import annotations
