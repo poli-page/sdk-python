@@ -8,6 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue?style=flat&logo=python&logoColor=ffffff)](https://github.com/poli-page/sdk-python)
 [![Types](https://img.shields.io/badge/Types-py.typed-blue?style=flat&logo=python&logoColor=ffffff)](https://peps.python.org/pep-0561/)
 [![Linter](https://img.shields.io/badge/Linter-Ruff-blue?style=flat&logo=python&logoColor=ffffff)](https://github.com/astral-sh/ruff)
+[![Deps](https://img.shields.io/badge/Deps-up%20to%20date-brightgreen?style=flat&logo=python&logoColor=ffffff)](https://github.com/poli-page/sdk-python/network/dependencies)
 [![Docs](https://img.shields.io/badge/Docs-online-brightgreen?style=flat&logo=readthedocs&logoColor=ffffff)](https://poli-page.github.io/sdk-python/)
 [![License](https://img.shields.io/github/license/poli-page/sdk-python?style=flat&logo=gnu&logoColor=ffffff&label=License)](LICENSE)
 
