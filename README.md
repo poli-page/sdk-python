@@ -1,10 +1,13 @@
 # Poli Page SDK for Python
 
+[![PyPI version](https://img.shields.io/pypi/v/poli-page.svg)](https://pypi.org/project/poli-page/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/poli-page.svg)](https://pypi.org/project/poli-page/)
 [![CI](https://github.com/poli-page/sdk-python/actions/workflows/ci.yml/badge.svg)](https://github.com/poli-page/sdk-python/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/poli-page/sdk-python/actions/workflows/codeql.yml/badge.svg)](https://github.com/poli-page/sdk-python/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/poli-page/sdk-python/branch/main/graph/badge.svg)](https://codecov.io/gh/poli-page/sdk-python)
 [![Docs](https://img.shields.io/badge/docs-online-brightgreen.svg)](https://poli-page.github.io/sdk-python/)
 [![Python versions](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://github.com/poli-page/sdk-python)
+[![types: py.typed](https://img.shields.io/badge/types-py.typed-blue?logo=python&logoColor=white)](https://peps.python.org/pep-0561/)
 [![License](https://img.shields.io/github/license/poli-page/sdk-python.svg)](LICENSE)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
