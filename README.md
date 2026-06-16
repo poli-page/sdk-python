@@ -1,15 +1,15 @@
 # Poli Page SDK for Python
 
-[![Pypi](https://img.shields.io/pypi/v/poli-page?style=flat&labelColor=334155&logo=python&logoColor=ffffff&label=Pypi&color=0ea5e9)](https://pypi.org/project/poli-page/)
-[![Downloads](https://img.shields.io/pypi/dm/poli-page?style=flat&labelColor=334155&logo=python&logoColor=ffffff&label=Downloads&color=0ea5e9)](https://pypi.org/project/poli-page/)
-[![Ci](https://img.shields.io/github/actions/workflow/status/poli-page/sdk-python/ci.yml?branch=main&style=flat&labelColor=334155&logo=githubactions&logoColor=ffffff&label=Ci&color=059669)](https://github.com/poli-page/sdk-python/actions/workflows/ci.yml)
-[![Codeql](https://img.shields.io/github/actions/workflow/status/poli-page/sdk-python/codeql.yml?branch=main&style=flat&labelColor=334155&logo=github&logoColor=ffffff&label=Codeql&color=059669)](https://github.com/poli-page/sdk-python/actions/workflows/codeql.yml)
-[![Coverage](https://img.shields.io/codecov/c/github/poli-page/sdk-python?style=flat&labelColor=334155&logo=codecov&logoColor=ffffff&label=Coverage&color=059669)](https://codecov.io/gh/poli-page/sdk-python)
-[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-0ea5e9?style=flat&labelColor=334155&logo=python&logoColor=ffffff)](https://github.com/poli-page/sdk-python)
-[![Types](https://img.shields.io/badge/Types-py.typed-0ea5e9?style=flat&labelColor=334155&logo=python&logoColor=ffffff)](https://peps.python.org/pep-0561/)
-[![Linter](https://img.shields.io/badge/Linter-Ruff-0ea5e9?style=flat&labelColor=334155&logo=python&logoColor=ffffff)](https://github.com/astral-sh/ruff)
-[![Docs](https://img.shields.io/badge/Docs-online-059669?style=flat&labelColor=334155&logo=readthedocs&logoColor=ffffff)](https://poli-page.github.io/sdk-python/)
-[![License](https://img.shields.io/github/license/poli-page/sdk-python?style=flat&labelColor=334155&logo=gnu&logoColor=ffffff&label=License&color=0ea5e9)](LICENSE)
+[![Pypi](https://img.shields.io/pypi/v/poli-page?style=flat&labelColor=334155&logo=python&logoColor=ffffff&label=Pypi)](https://pypi.org/project/poli-page/)
+[![Downloads](https://img.shields.io/pypi/dm/poli-page?style=flat&labelColor=334155&logo=python&logoColor=ffffff&label=Downloads)](https://pypi.org/project/poli-page/)
+[![Ci](https://img.shields.io/github/actions/workflow/status/poli-page/sdk-python/ci.yml?branch=main&style=flat&labelColor=334155&logo=githubactions&logoColor=ffffff&label=Ci)](https://github.com/poli-page/sdk-python/actions/workflows/ci.yml)
+[![Codeql](https://img.shields.io/github/actions/workflow/status/poli-page/sdk-python/codeql.yml?branch=main&style=flat&labelColor=334155&logo=github&logoColor=ffffff&label=Codeql)](https://github.com/poli-page/sdk-python/actions/workflows/codeql.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/poli-page/sdk-python?style=flat&labelColor=334155&logo=codecov&logoColor=ffffff&label=Coverage)](https://codecov.io/gh/poli-page/sdk-python)
+[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue?style=flat&labelColor=334155&logo=python&logoColor=ffffff)](https://github.com/poli-page/sdk-python)
+[![Types](https://img.shields.io/badge/Types-py.typed-blue?style=flat&labelColor=334155&logo=python&logoColor=ffffff)](https://peps.python.org/pep-0561/)
+[![Linter](https://img.shields.io/badge/Linter-Ruff-blue?style=flat&labelColor=334155&logo=python&logoColor=ffffff)](https://github.com/astral-sh/ruff)
+[![Docs](https://img.shields.io/badge/Docs-online-brightgreen?style=flat&labelColor=334155&logo=readthedocs&logoColor=ffffff)](https://poli-page.github.io/sdk-python/)
+[![License](https://img.shields.io/github/license/poli-page/sdk-python?style=flat&labelColor=334155&logo=gnu&logoColor=ffffff&label=License)](LICENSE)
 
 Official Python SDK for [Poli Page](https://poli.page) — render polished PDFs from HTML templates via the Poli Page API.
 
