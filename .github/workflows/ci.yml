@@ -71,8 +71,11 @@ jobs:
       - name: Upload coverage to Codecov
         # Why: only upload from one matrix slot to avoid duplicate reports;
         # skip silently when coverage.xml wasn't produced (e.g. pytest-cov absent).
+        # use_oidc is required: Codecov rejects tokenless uploads on the default
+        # (protected) branch, and we've granted id-token: write at the job level.
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && hashFiles('coverage.xml') != ''
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
           files: coverage.xml
           fail_ci_if_error: false
+          use_oidc: true
