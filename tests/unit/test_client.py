@@ -659,7 +659,6 @@ class TestHooks:
         result = client.render.preview({"template": "<p>x</p>", "data": {}})
         assert result.html == "ok"
 
-
     @respx.mock
     def test_on_request_fires_before_each_attempt(self) -> None:
         from poli_page import RequestEvent
@@ -695,12 +694,9 @@ class TestHooks:
                 200, json={"html": "ok", "totalPages": 1, "environment": "sandbox"}
             )
         )
-        client = PoliPage(
-            api_key="pp_test_abc", base_url=TEST_BASE_URL, on_request=hostile
-        )
+        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, on_request=hostile)
         result = client.render.preview({"template": "<p>x</p>", "data": {}})
         assert result.html == "ok"
-
 
     @respx.mock
     def test_on_response_fires_on_success(self) -> None:
@@ -714,9 +710,7 @@ class TestHooks:
                 headers={"x-request-id": "req_xyz"},
             )
         )
-        client = PoliPage(
-            api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append
-        )
+        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append)
         client.render.preview({"template": "<p>x</p>", "data": {}})
         assert len(events) == 1
         assert events[0].status == 200
@@ -751,12 +745,9 @@ class TestHooks:
                 200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
             )
         )
-        client = PoliPage(
-            api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append
-        )
+        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append)
         client.render.preview({"template": "<p>x</p>", "data": {}})
         assert events[0].request_id is None
-
 
     @respx.mock
     def test_on_retry_event_delay_is_milliseconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -802,9 +793,7 @@ class TestPerCallTimeout:
         # Monkey-patch via context — we don't want global side-effects.
         with pytest.MonkeyPatch().context() as mp:
             mp.setattr(httpx.Client, "request", spy)
-            client.render.preview(
-                {"template": "<p>x</p>", "data": {}, "timeout": 5.0}
-            )
+            client.render.preview({"template": "<p>x</p>", "data": {}, "timeout": 5.0})
         # httpx accepts `timeout` as a float or httpx.Timeout.
         assert "timeout" in captured
         # Either a bare float of 5.0, or an httpx.Timeout configured to 5.0.

@@ -231,7 +231,9 @@ class AsyncPoliPage:
                 self._fire_retry(attempt + 1, delay, last_error)
                 await asyncio.sleep(delay)
 
-            outcome = await self._send_once(method, path, body, idempotency_key, attempt + 1, timeout)
+            outcome = await self._send_once(
+                method, path, body, idempotency_key, attempt + 1, timeout
+            )
             if outcome.response is not None:
                 return outcome.response
 
