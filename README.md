@@ -1,6 +1,7 @@
 # Poli Page SDK for Python
 
 [![CI](https://github.com/poli-page/sdk-python/actions/workflows/ci.yml/badge.svg)](https://github.com/poli-page/sdk-python/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/poli-page/sdk-python/actions/workflows/codeql.yml/badge.svg)](https://github.com/poli-page/sdk-python/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/poli-page/sdk-python/branch/main/graph/badge.svg)](https://codecov.io/gh/poli-page/sdk-python)
 [![Docs](https://img.shields.io/badge/docs-online-brightgreen.svg)](https://poli-page.github.io/sdk-python/)
 [![Python versions](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://github.com/poli-page/sdk-python)
