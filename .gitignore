@@ -24,6 +24,10 @@ venv/
 .ruff_cache/
 .pytest_cache/
 .tox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
 # PHP
 vendor/

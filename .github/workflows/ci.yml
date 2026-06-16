@@ -5,6 +5,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  id-token: write  # Why: codecov-action v5 uses OIDC for tokenless uploads on public repos.
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -52,10 +56,23 @@ jobs:
         run: |
           if python -m pytest --version >/dev/null 2>&1; then
             if [ -d tests ] && find tests \( -name "test_*.py" -o -name "*_test.py" \) | grep -q .; then
-              python -m pytest -v
+              if python -c "import pytest_cov" 2>/dev/null; then
+                python -m pytest -v --cov=poli_page --cov-report=xml --cov-report=term
+              else
+                python -m pytest -v
+              fi
             else
               echo "pytest available but no tests yet — skipping"
             fi
           else
             echo "pytest not installed — skipping test"
           fi
+
+      - name: Upload coverage to Codecov
+        # Why: only upload from one matrix slot to avoid duplicate reports;
+        # skip silently when coverage.xml wasn't produced (e.g. pytest-cov absent).
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && hashFiles('coverage.xml') != ''
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
