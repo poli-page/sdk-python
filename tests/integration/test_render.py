@@ -71,8 +71,16 @@ def test_pdf_stream_yields_bytes(
 
 
 def test_bad_api_key_raises_authentication_error(
-    base_url: str, test_project: str, test_template: str, test_version: str
+    api_key: str,
+    base_url: str,
+    test_project: str,
+    test_template: str,
+    test_version: str,
 ) -> None:
+    # Why: depend on `api_key` so the conftest's skip gate kicks in when
+    # POLI_PAGE_API_KEY is unset, even though this test uses a deliberately
+    # invalid key to exercise the 401 path.
+    del api_key
     client = PoliPage(
         api_key="pp_test_invalid_xxx_definitely_not_real",
         base_url=base_url,
