@@ -46,8 +46,10 @@ def test_version() -> str:
 
 @pytest.fixture
 def client(api_key: str, base_url: str | None) -> Iterator[PoliPage]:
-    kwargs: dict[str, str] = {"api_key": api_key}
-    if base_url is not None:
-        kwargs["base_url"] = base_url
-    with PoliPage(**kwargs) as c:
+    client = (
+        PoliPage(api_key=api_key, base_url=base_url)
+        if base_url is not None
+        else PoliPage(api_key=api_key)
+    )
+    with client as c:
         yield c
