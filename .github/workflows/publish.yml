@@ -69,11 +69,15 @@ jobs:
           fi
           echo "Releasing poli-page@$PKG_VERSION to ${{ inputs.target }}."
 
-      - name: Verify tag does not yet exist
+      - name: Verify tag does not yet exist on origin
         run: |
           set -euo pipefail
-          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
-            echo "Refusing to publish: tag v${{ inputs.version }} already exists." >&2
+          # Query origin directly: actions/checkout is a shallow clone with no
+          # tags fetched, so `git rev-parse` would miss a tag that exists on
+          # origin and let the publish proceed (PyPI upload is immutable and
+          # happens before the tag push — a stale tag would publish, then fail).
+          if git ls-remote --exit-code --tags origin "refs/tags/v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Refusing to publish: tag v${{ inputs.version }} already exists on origin." >&2
             exit 1
           fi
 
