@@ -1,9 +1,10 @@
 name: Publish to PyPI
 
-# Manual-only release workflow. Publishes to PyPI via PEP 740 Trusted
-# Publishing (OIDC; no long-lived token). This is the recommended path
-# for signed-attestation transparency; `scripts/release.sh` remains the
-# primary local fallback.
+# Tag-driven release. Pushing a `vX.Y.Z` tag publishes that version to PyPI
+# via PEP 740 Trusted Publishing (OIDC; no long-lived token) and cuts the
+# matching GitHub Release. A manual `workflow_dispatch` run publishes to
+# TestPyPI only — for rehearsing the pipeline without burning a real
+# version on pypi.org (PyPI uploads are immutable).
 #
 # One-time setup before this workflow can publish:
 #   1. Register the PyPI Trusted Publisher for this repo:
@@ -12,35 +13,33 @@ name: Publish to PyPI
 #      repo:    sdk-python
 #      workflow: publish.yml
 #      environment: pypi-publish
-#   2. Configure the `pypi-publish` repository environment with required
+#   2. For rehearsals, register the same pending publisher on test.pypi.org.
+#   3. Configure the `pypi-publish` repository environment with required
 #      reviewers (so the run pauses for human approval before upload).
 #
 # Per release:
-#   1. Bump version in src/poli_page/_version.py, move [Unreleased] in
-#      CHANGELOG.md.
-#   2. Commit (`chore(release): X.Y.Z`) and push to main.
-#   3. Run this workflow via the GitHub Actions UI, enter the version,
-#      pick the target (pypi or testpypi). The workflow refuses to run
-#      if _version.py doesn't match.
+#   1. Bump src/poli_page/_version.py, move [Unreleased] in CHANGELOG.md,
+#      commit (`chore(release): X.Y.Z`) and push to main; wait for CI green.
+#   2. (Optional) Rehearse: run this workflow manually -> TestPyPI.
+#   3. Tag and push:  git tag vX.Y.Z && git push origin vX.Y.Z
+#      The tag version must match _version.py exactly, or the run fails.
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to publish (must match src/poli_page/_version.py exactly, e.g. 1.0.0 or 2.0.0rc1)"
-        required: true
-        type: string
       target:
-        description: "Publish target"
+        description: "Manual runs publish to TestPyPI only (production goes through a vX.Y.Z tag push)."
         required: true
-        default: "pypi"
+        default: "testpypi"
         type: choice
         options:
-          - pypi
           - testpypi
 
 permissions:
-  contents: write   # to create + push the git tag
+  contents: write   # to create the GitHub Release
   id-token: write   # required for PyPI Trusted Publishing (OIDC)
 
 defaults:
@@ -59,23 +58,25 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify input version matches src/poli_page/_version.py
+      - name: Resolve version and target
+        id: rel
         run: |
           set -euo pipefail
           PKG_VERSION="$(python -c 'import re; print(re.search(r"__version__\s*=\s*\"([^\"]+)\"", open("src/poli_page/_version.py").read()).group(1))')"
-          if [[ "$PKG_VERSION" != "${{ inputs.version }}" ]]; then
-            echo "Refusing to publish: input version (${{ inputs.version }}) does not match _version.py ($PKG_VERSION)." >&2
-            exit 1
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Tag push -> production release to PyPI. The tag version must
+            # match _version.py exactly (PEP 440 normalized form, no hyphen).
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [[ "$TAG_VERSION" != "$PKG_VERSION" ]]; then
+              echo "Refusing to publish: tag ${GITHUB_REF_NAME} does not match _version.py ($PKG_VERSION)." >&2
+              exit 1
+            fi
+            echo "target=pypi" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=testpypi" >> "$GITHUB_OUTPUT"
           fi
-          echo "Releasing poli-page@$PKG_VERSION to ${{ inputs.target }}."
-
-      - name: Verify tag does not yet exist
-        run: |
-          set -euo pipefail
-          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
-            echo "Refusing to publish: tag v${{ inputs.version }} already exists." >&2
-            exit 1
-          fi
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing poli-page@$PKG_VERSION via ${{ github.event_name }}."
 
       - name: Install dependencies
         run: |
@@ -101,37 +102,28 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Publish to PyPI via Trusted Publishing
-        if: inputs.target == 'pypi'
+        if: steps.rel.outputs.target == 'pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           attestations: true
 
       - name: Publish to TestPyPI via Trusted Publishing
-        if: inputs.target == 'testpypi'
+        if: steps.rel.outputs.target == 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           attestations: true
 
-      - name: Tag the release commit
-        if: inputs.target == 'pypi'
-        run: |
-          set -euo pipefail
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ inputs.version }}"
-          git push origin "v${{ inputs.version }}"
-
       - name: Extract CHANGELOG section for this version
-        if: inputs.target == 'pypi'
+        if: steps.rel.outputs.target == 'pypi'
         id: changelog
         run: |
           set -euo pipefail
-          # Slice between `## [X.Y.Z]` (inclusive of trailing newline) and the
-          # next `## [` heading (exclusive). Falls back to a stub note if the
-          # version isn't documented yet — so the release never blocks on copy.
+          # Slice between `## [X.Y.Z]` and the next `## [` heading. Falls back
+          # to a stub note if the version isn't documented yet — so the
+          # release never blocks on copy.
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
-          awk -v ver="${{ inputs.version }}" '
+          awk -v ver="${{ steps.rel.outputs.version }}" '
             $0 ~ "^## \\[" ver "\\]" { capture = 1; next }
             capture && /^## \[/        { exit }
             capture                    { print }
@@ -142,12 +134,14 @@ jobs:
           echo "notes_file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        if: inputs.target == 'pypi'
+        if: steps.rel.outputs.target == 'pypi'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release create "v${{ inputs.version }}" \
-            --title "v${{ inputs.version }}" \
+          # The tag already exists (it triggered this run); attach the built
+          # artifacts and the carved release notes to it.
+          gh release create "v${{ steps.rel.outputs.version }}" \
+            --title "v${{ steps.rel.outputs.version }}" \
             --notes-file "${{ steps.changelog.outputs.notes_file }}" \
             dist/*

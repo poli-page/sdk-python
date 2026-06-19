@@ -780,7 +780,7 @@ class TestPerCallTimeout:
         captured: dict[str, object] = {}
         real_request = httpx.Client.request
 
-        def spy(self: httpx.Client, *args: object, **kwargs: object) -> httpx.Response:
+        def spy(self: httpx.Client, *args: Any, **kwargs: Any) -> httpx.Response:
             captured.update(kwargs)
             return real_request(self, *args, **kwargs)
 
@@ -805,7 +805,7 @@ class TestPerCallTimeout:
         captured: dict[str, object] = {}
         real_request = httpx.Client.request
 
-        def spy(self: httpx.Client, *args: object, **kwargs: object) -> httpx.Response:
+        def spy(self: httpx.Client, *args: Any, **kwargs: Any) -> httpx.Response:
             captured.update(kwargs)
             return real_request(self, *args, **kwargs)
 

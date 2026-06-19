@@ -48,7 +48,7 @@ class RenderSync:
     def preview(self, input: RenderInput) -> PreviewResult:
         """Generate paginated HTML preview output (spec §5.3)."""
         idempotency_key = input.get("idempotency_key")
-        timeout = cast("float | None", input.get("timeout"))
+        timeout = input.get("timeout")
         body = to_wire(input)
         raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key, timeout=timeout
@@ -59,7 +59,7 @@ class RenderSync:
         """Render a PDF, store it server-side, return the descriptor (spec §5.2)."""
         _require_project_mode(input)
         idempotency_key = input.get("idempotency_key")
-        timeout = cast("float | None", input.get("timeout"))
+        timeout = input.get("timeout")
         body = to_wire(input)
         raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
@@ -90,7 +90,7 @@ class RenderAsync:
 
     async def preview(self, input: RenderInput) -> PreviewResult:
         idempotency_key = input.get("idempotency_key")
-        timeout = cast("float | None", input.get("timeout"))
+        timeout = input.get("timeout")
         body = to_wire(input)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key, timeout=timeout
@@ -100,7 +100,7 @@ class RenderAsync:
     async def document(self, input: ProjectModeInput) -> AsyncDocumentDescriptor:
         _require_project_mode(input)
         idempotency_key = input.get("idempotency_key")
-        timeout = cast("float | None", input.get("timeout"))
+        timeout = input.get("timeout")
         body = to_wire(input)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
@@ -232,7 +232,7 @@ class _AsyncPdfStreamCoroutineCM:
     async def __aenter__(self) -> AsyncIterator[bytes]:
         _require_project_mode(self._input)
         idempotency_key = self._input.get("idempotency_key")
-        timeout = cast("float | None", self._input.get("timeout"))
+        timeout = self._input.get("timeout")
         body = to_wire(self._input)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
