@@ -8,9 +8,9 @@ Breaking changes between major versions are summarized in [MIGRATION.md](MIGRATI
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-05-21
+## [0.9.0] - 2026-06-19
 
-First stable release. Behavior parity with `@poli-page/sdk@1.0.0` (Node).
+First public release (pre-1.0). Behavior parity with `@poli-page/sdk@1.0.0` (Node).
 
 ### Added
 
@@ -30,7 +30,7 @@ First stable release. Behavior parity with `@poli-page/sdk@1.0.0` (Node).
 - **Context-manager lifecycle**: `with PoliPage(...) as client:` (sync) / `async with AsyncPoliPage(...) as client:` (async). Sockets close deterministically.
 - **Injected `http_client`**: pass a pre-configured `httpx.Client` / `httpx.AsyncClient` for proxies, custom TLS, shared connection pools, or test transports. Caller-owned clients are not closed on `close()` / `aclose()`.
 - **`py.typed`** marker — pyright `strict` and mypy `--strict` on `src/` are both green.
-- **PyPI Trusted Publishing** workflow (`workflow_dispatch`-gated) for signed-attestation releases; the canonical publish path remains the local `scripts/release.sh`.
+- **PyPI Trusted Publishing** workflow (tag-driven) for signed-attestation releases; pushing a `vX.Y.Z` tag publishes to PyPI, a manual run rehearses on TestPyPI. `scripts/release.sh` remains a local fallback.
 - **Runnable demos** at `demo/sync_demo.py` and `demo/async_demo.py` — walk every public method end-to-end against the live API; outputs are byte-equivalent across sync / async.
 
 ### Contract
