@@ -1,7 +1,7 @@
 # Poli Page SDK for Python
 
-[![Pypi](https://img.shields.io/pypi/v/poli-page?style=flat&logo=python&logoColor=ffffff&label=Pypi)](https://pypi.org/project/poli-page/)
-[![Downloads](https://img.shields.io/pypi/dm/poli-page?style=flat&logo=python&logoColor=ffffff&label=Downloads)](https://pypi.org/project/poli-page/)
+[![Pypi](https://img.shields.io/pypi/v/poli-page?style=flat&logo=python&logoColor=ffffff&label=Pypi&cacheSeconds=3600)](https://pypi.org/project/poli-page/)
+[![Downloads](https://img.shields.io/pypi/dm/poli-page?style=flat&logo=python&logoColor=ffffff&label=Downloads&cacheSeconds=3600)](https://pypi.org/project/poli-page/)
 [![Ci](https://img.shields.io/github/actions/workflow/status/poli-page/sdk-python/ci.yml?branch=main&style=flat&logo=githubactions&logoColor=ffffff&label=Ci)](https://github.com/poli-page/sdk-python/actions/workflows/ci.yml)
 [![Codeql](https://img.shields.io/github/actions/workflow/status/poli-page/sdk-python/codeql.yml?branch=main&style=flat&logo=github&logoColor=ffffff&label=Codeql)](https://github.com/poli-page/sdk-python/actions/workflows/codeql.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/poli-page/sdk-python?style=flat&logo=codecov&logoColor=ffffff&label=Coverage)](https://codecov.io/gh/poli-page/sdk-python)
