@@ -22,7 +22,7 @@ jobs:
         # Bash on every runner — keeps the auto-skip conditionals portable on Windows.
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -74,7 +74,7 @@ jobs:
         # use_oidc is required: Codecov rejects tokenless uploads on the default
         # (protected) branch, and we've granted id-token: write at the job level.
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && hashFiles('coverage.xml') != ''
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: coverage.xml
           fail_ci_if_error: false
