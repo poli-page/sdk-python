@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit config for poli-page repos. PRs here are mostly opened and fixed by automated agents
+# (the poli-page auto loop and issue pipeline), which read CodeRabbit's findings and its commit status.
+language: en-US
+early_access: false
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  allow_author_approval: true
+  # The summary goes in the walkthrough, never in the PR description: the merge gate reads the description.
+  high_level_summary: false
+  high_level_summary_in_walkthrough: true
+  review_status: true
+  review_details: false
+  # The loop decides "reviewed this head" from the CodeRabbit commit status ("Review completed").
+  review_progress: true
+  commit_status: true
+  fail_commit_status: false
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  # PR labels are the closed issues' labels; CodeRabbit only suggests.
+  auto_apply_labels: false
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: true
+  abort_on_close: true
+  disable_cache: false
+  slop_detection:
+    enabled: true
+    include_all_authors: false
+  auto_review:
+    enabled: true
+    drafts: false
+    # Every push of a fix round must be reviewed, and never auto-paused (the loop allows up to 5 rounds).
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!uv.lock"
+    - "!docs/package-lock.json"
+    - "!CHANGELOG.md"
+    - "!**/__pycache__/**"
+    - "!**/*.egg-info/**"
+    - "!dist/**"
+    - "!build/**"
+    - "!htmlcov/**"
+    - "!docs-site/**"
+  path_instructions:
+    - path: "src/poli_page/**/*.py"
+      instructions: |
+        Public API must stay aligned with the other poli-page SDKs and the API spec. No breaking changes to public names, signatures or behavior without a major version bump. Every public sync method needs its async counterpart (_client.py / _async_client.py) with identical semantics. Code must pass pyright strict and ruff (line length 100, py311).
+    - path: "src/poli_page/_errors.py"
+      instructions: |
+        Errors must map the API error shape `{ error: { code } }` to the typed exception hierarchy. Never leak the API key or full request/response bodies in messages or reprs.
+    - path: "src/poli_page/_transport.py"
+      instructions: |
+        Retries must only apply to idempotent or idempotency-keyed requests, with bounded backoff and respect for cancellation/timeouts. Auth headers must never be logged. Keep sync and async transports behaviorally identical.
+    - path: "tests/**/*.py"
+      instructions: |
+        Every public method needs unit tests (respx for HTTP) covering success and error paths, in both sync and async variants. Tests marked `integration` must be skipped without POLI_PAGE_API_KEY and never contain real keys.
+    - path: "docs/src/content/**/*.mdx"
+      instructions: |
+        Docs must match the actual public API and the canonical methods/errors in docs/src/preset. Code samples must use the POLI_PAGE_API_KEY env var, never inline keys.
+    - path: "examples/**/*.py"
+      instructions: |
+        Sample code that customers copy: read the API key from the environment, keep it runnable and in sync with the current public API.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CONTRIBUTING.md"
