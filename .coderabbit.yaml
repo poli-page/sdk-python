@@ -48,7 +48,6 @@ reviews:
   path_filters:
     - "!uv.lock"
     - "!docs/package-lock.json"
-    - "!CHANGELOG.md"
     - "!**/__pycache__/**"
     - "!**/*.egg-info/**"
     - "!dist/**"
@@ -61,7 +60,7 @@ reviews:
         Public API must stay aligned with the other poli-page SDKs and the API spec. No breaking changes to public names, signatures or behavior without a major version bump. Every public sync method needs its async counterpart (_client.py / _async_client.py) with identical semantics. Code must pass pyright strict and ruff (line length 100, py311).
     - path: "src/poli_page/_errors.py"
       instructions: |
-        Errors must map the API error shape `{ error: { code } }` to the typed exception hierarchy. Never leak the API key or full request/response bodies in messages or reprs.
+        Errors must map the API error shape `{ error: CODE_STRING, detail?, issues? } (flat, API spec §4.1)` to the typed exception hierarchy. Never leak the API key or full request/response bodies in messages or reprs.
     - path: "src/poli_page/_transport.py"
       instructions: |
         Retries must only apply to idempotent or idempotency-keyed requests, with bounded backoff and respect for cancellation/timeouts. Auth headers must never be logged. Keep sync and async transports behaviorally identical.
