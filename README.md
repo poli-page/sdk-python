@@ -33,24 +33,28 @@ from poli_page import PoliPage
 
 client = PoliPage(api_key="pp_test_...")
 
-pdf = client.render.pdf({
-    "project": "getting-started",
-    "template": "welcome",
-    "version": "1.0.0",
-    "data": {"name": "World"},
-})
+pdf = client.render.pdf(
+    {
+        "project": "getting-started",
+        "template": "welcome",
+        "version": "1.0.0",
+        "data": {"name": "World"},
+    }
+)
 # pdf is bytes
 ```
 
 Every Poli Page org comes pre-provisioned with a `getting-started/welcome` template, so the snippet above runs as-is the moment you have an API key — no project setup needed. For your own templates, swap the slugs once you've pushed a version with the `poli` CLI:
 
 ```python
-pdf = client.render.pdf({
-    "project": "billing",
-    "template": "invoice",
-    "version": "1.0.0",
-    "data": {"invoice_number": "INV-001", "total": 1280},
-})
+pdf = client.render.pdf(
+    {
+        "project": "billing",
+        "template": "invoice",
+        "version": "1.0.0",
+        "data": {"invoice_number": "INV-001", "total": 1280},
+    }
+)
 ```
 
 ### Async client
@@ -61,14 +65,18 @@ Every method is mirrored on `AsyncPoliPage` for asyncio code — same constructo
 import asyncio
 from poli_page import AsyncPoliPage
 
+
 async def main():
     async with AsyncPoliPage(api_key="pp_test_...") as client:
-        pdf = await client.render.pdf({
-            "project": "getting-started",
-            "template": "welcome",
-            "version": "1.0.0",
-            "data": {"name": "World"},
-        })
+        pdf = await client.render.pdf(
+            {
+                "project": "getting-started",
+                "template": "welcome",
+                "version": "1.0.0",
+                "data": {"name": "World"},
+            }
+        )
+
 
 asyncio.run(main())
 ```
@@ -80,10 +88,12 @@ Pick the variant at construction time. The SDK does not auto-detect "am I in an 
 `render.preview` accepts raw HTML for live editing and visual inspection without producing a stored document. Use this for editor previews or layout tests.
 
 ```python
-result = client.render.preview({
-    "template": "<h1>Hello {{ name }}</h1>",
-    "data": {"name": "World"},
-})
+result = client.render.preview(
+    {
+        "template": "<h1>Hello {{ name }}</h1>",
+        "data": {"name": "World"},
+    }
+)
 print(f"Rendered {result.total_pages} page(s) in {result.environment} mode")
 ```
 
@@ -124,12 +134,14 @@ First run prompts for a `pp_test_*` key and saves it to `.env` at the repo root.
 ### Stream — for large PDFs or piping to S3 / HTTP responses
 
 ```python
-with client.render.pdf_stream({
-    "project": "billing",
-    "template": "invoice",
-    "version": "1.0.0",
-    "data": {"invoice_number": "INV-001"},
-}) as stream:
+with client.render.pdf_stream(
+    {
+        "project": "billing",
+        "template": "invoice",
+        "version": "1.0.0",
+        "data": {"invoice_number": "INV-001"},
+    }
+) as stream:
     with open("invoice.pdf", "wb") as fh:
         for chunk in stream:
             fh.write(chunk)
@@ -143,13 +155,15 @@ Every render produces a stored document, accessible via `document_id` for later 
 
 ```python
 # 1. Render and store
-doc = client.render.document({
-    "project": "billing",
-    "template": "invoice",
-    "version": "1.0.0",
-    "data": {"invoice_number": "INV-001"},
-    "metadata": {"customer_id": "cust_123"},  # your own audit data
-})
+doc = client.render.document(
+    {
+        "project": "billing",
+        "template": "invoice",
+        "version": "1.0.0",
+        "data": {"invoice_number": "INV-001"},
+        "metadata": {"customer_id": "cust_123"},  # your own audit data
+    }
+)
 # doc.document_id, doc.page_count, doc.size_bytes, doc.presigned_pdf_url, doc.metadata, ...
 
 # 2. Save doc.document_id in your database
@@ -225,7 +239,9 @@ When you need different settings for a single call (a longer timeout for a heavy
 
 ```python
 slow_client = client.with_options(timeout=120.0, max_retries=5)
-pdf = slow_client.render.pdf({"project": "billing", "template": "yearly-report", "version": "1.0.0", "data": {...}})
+pdf = slow_client.render.pdf(
+    {"project": "billing", "template": "yearly-report", "version": "1.0.0", "data": {...}}
+)
 ```
 
 `with_options` returns a **new** client; unspecified options inherit from the original. The branch owns its own connection pool, so closing one does not close the other. The async client exposes the same method on `AsyncPoliPage`.
@@ -303,7 +319,7 @@ except PoliPageError as err:
     if err.code == error_codes.DOCUMENT_NOT_FOUND:
         return show_404()
     if err.code == error_codes.GONE:
-        return show_410()   # document was soft-deleted
+        return show_410()  # document was soft-deleted
     raise
 ```
 
@@ -314,7 +330,9 @@ except PoliPageError as err:
 Per-call timeout (overrides the client-level `timeout`):
 
 ```python
-pdf = client.render.pdf({"project": "...", "template": "...", "version": "...", "data": {}, "timeout": 5.0})
+pdf = client.render.pdf(
+    {"project": "...", "template": "...", "version": "...", "data": {}, "timeout": 5.0}
+)
 ```
 
 For full cancellation in async code, use standard `asyncio` task cancellation:
@@ -350,11 +368,14 @@ Optional, sync callables; never break the request:
 ```python
 from poli_page import PoliPage, RetryEvent, PoliPageError
 
+
 def on_retry(event: RetryEvent) -> None:
     log.warning(f"retry {event.attempt} after {event.delay_seconds:.3f}s: {event.reason.code}")
 
+
 def on_error(err: PoliPageError) -> None:
     sentry.capture_exception(err)
+
 
 client = PoliPage(api_key="...", on_retry=on_retry, on_error=on_error)
 ```
@@ -368,7 +389,7 @@ client = PoliPage(
     api_key="pp_test_...",
     http_client=httpx.Client(
         event_hooks={
-            "request":  [lambda req: metrics.inc("poli.request")],
+            "request": [lambda req: metrics.inc("poli.request")],
             "response": [lambda res: tracing.add_event(res.status_code)],
         }
     ),
