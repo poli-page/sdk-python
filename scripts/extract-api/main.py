@@ -50,13 +50,6 @@ METHODS: list[dict[str, str]] = [
         "example": "render_pdf_stream.py",
     },
     {
-        "slug": "render-preview",
-        "name": "render.preview",
-        "class": "RenderSync",
-        "func": "preview",
-        "example": "render_preview.py",
-    },
-    {
         "slug": "render-document",
         "name": "render.document",
         "class": "RenderSync",
@@ -102,11 +95,8 @@ METHODS: list[dict[str, str]] = [
 
 # Public types to document (resolved from src/poli_page/types.py).
 PUBLIC_TYPES = [
-    "ProjectModeInput",
-    "InlineModeInput",
     "RenderInput",
     "RenderMetadata",
-    "PreviewResult",
     "DocumentPreviewResult",
     "DocumentDescriptor",
     "AsyncDocumentDescriptor",
@@ -139,12 +129,6 @@ METHOD_ERRORS: dict[str, list[dict[str, str]]] = {
         {"code": "QUOTA_EXCEEDED", "when": "Per-key rate limit or monthly quota reached. Retryable."},
         {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
         {"code": "DOWNLOAD_FAILED", "when": "The S3 second-hop streaming download failed."},
-    ],
-    "render-preview": [
-        {"code": "VALIDATION_ERROR", "when": "The `data` mapping does not satisfy the template schema."},
-        {"code": "NOT_FOUND", "when": "The `project/template` slug does not exist (project mode only)."},
-        {"code": "MISSING_DATA", "when": "Request body lacks the required `data` field."},
-        {"code": "QUOTA_EXCEEDED", "when": "Per-key rate limit or monthly quota reached. Retryable."},
     ],
     "render-document": [
         {"code": "VALIDATION_ERROR", "when": "The `data` mapping does not satisfy the template schema."},
@@ -365,7 +349,6 @@ def _params_for_method(spec: dict[str, str], func_info: FunctionInfo) -> list[di
     descriptions: dict[str, dict[str, str]] = {
         "render-pdf": {"input": "Project-mode render input (`project`, `template`, `data`, plus optional `version`, `format`, `orientation`, `locale`, `metadata`, `idempotency_key`)."},
         "render-pdf-stream": {"input": "Project-mode render input. Same shape as `render.pdf`."},
-        "render-preview": {"input": "Render input — accepts project mode OR inline mode."},
         "render-document": {"input": "Project-mode render input. Same shape as `render.pdf`."},
         "documents-get": {"id": "The `document_id` returned by a prior `render.document` call."},
         "documents-preview": {"id": "The `document_id` of the stored document to preview."},
@@ -439,7 +422,6 @@ def _returns_for(slug: str, func_info: FunctionInfo) -> str:
     descriptions = {
         "render-pdf": "the rendered PDF as raw bytes.",
         "render-pdf-stream": "a context manager yielding `Iterator[bytes]` chunks of the PDF stream.",
-        "render-preview": "a `PreviewResult` with `html`, `total_pages`, and `environment` fields.",
         "render-document": "a `DocumentDescriptor` whose `download_pdf()` fetches the bytes on demand.",
         "documents-get": "a `DocumentDescriptor` refreshed with a new `presigned_pdf_url` (15-minute TTL).",
         "documents-preview": "a `DocumentPreviewResult` with `html` and `page_count`.",
@@ -586,10 +568,7 @@ def _types_mdx(type_docs: dict[str, str]) -> str:
         "",
         "```python",
         "from poli_page import (",
-        "    ProjectModeInput,",
-        "    InlineModeInput,",
         "    RenderInput,",
-        "    PreviewResult,",
         "    DocumentDescriptor,",
         "    AsyncDocumentDescriptor,",
         "    DocumentPreviewResult,",
