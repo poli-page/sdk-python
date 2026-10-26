@@ -234,9 +234,7 @@ When you need different settings for a single call (a longer timeout for a heavy
 
 ```python
 slow_client = client.with_options(timeout=120.0, max_retries=5)
-pdf = slow_client.render.pdf(
-    {"project": "billing", "template": "yearly-report", "data": {...}}
-)
+pdf = slow_client.render.pdf({"project": "billing", "template": "yearly-report", "data": {...}})
 ```
 
 `with_options` returns a **new** client; unspecified options inherit from the original. The branch owns its own connection pool, so closing one does not close the other. The async client exposes the same method on `AsyncPoliPage`.
@@ -325,9 +323,7 @@ except PoliPageError as err:
 Per-call timeout (overrides the client-level `timeout`):
 
 ```python
-pdf = client.render.pdf(
-    {"project": "...", "template": "...", "data": {}, "timeout": 5.0}
-)
+pdf = client.render.pdf({"project": "...", "template": "...", "data": {}, "timeout": 5.0})
 ```
 
 For full cancellation in async code, use standard `asyncio` task cancellation:

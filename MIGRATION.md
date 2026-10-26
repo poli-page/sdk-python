@@ -33,9 +33,7 @@ the project to that environment instead of pinning a version.
 
 ```python
 # 0.9.x
-client.render.pdf(
-    {"project": "billing", "template": "invoice", "version": "1.0.0", "data": data}
-)
+client.render.pdf({"project": "billing", "template": "invoice", "version": "1.0.0", "data": data})
 
 # 0.10.0
 client.render.pdf({"project": "billing", "template": "invoice", "data": data})
@@ -91,12 +89,16 @@ SDK does not list still reaches `err.code` verbatim.
 
 ```python
 # 0.9.x
-if err.code == error_codes.GONE: ...
-if err.code == error_codes.PAYMENT_REQUIRED: ...
+if err.code == error_codes.GONE:
+    ...
+if err.code == error_codes.PAYMENT_REQUIRED:
+    ...
 
 # 0.10.0
-if err.code == error_codes.DOCUMENT_GONE: ...
-if err.code == error_codes.ORGANIZATION_PAYMENT_GRACE: ...
+if err.code == error_codes.DOCUMENT_GONE:
+    ...
+if err.code == error_codes.ORGANIZATION_PAYMENT_GRACE:
+    ...
 ```
 
 ### Thumbnails and delete
