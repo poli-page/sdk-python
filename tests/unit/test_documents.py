@@ -370,3 +370,13 @@ class TestDocumentsDelete:
         assert first is None
         assert second is None
         assert route.call_count == 2
+
+    @respx.mock
+    def test_404_raises_not_found_error(self, client: PoliPage) -> None:
+        respx.delete(f"{TEST_BASE_URL}/v1/documents/missing").mock(
+            return_value=httpx.Response(404, json={"error": "DOCUMENT_NOT_FOUND"})
+        )
+        with pytest.raises(NotFoundError) as excinfo:
+            client.documents.delete("missing")
+        assert excinfo.value.status == 404
+        assert excinfo.value.code == "DOCUMENT_NOT_FOUND"

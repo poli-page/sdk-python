@@ -190,3 +190,14 @@ class TestDocumentsDelete:
             assert first is None
             assert second is None
         assert route.call_count == 2
+
+    @respx.mock
+    async def test_404_raises_not_found_error(self) -> None:
+        respx.delete(f"{TEST_BASE_URL}/v1/documents/missing").mock(
+            return_value=httpx.Response(404, json={"error": "DOCUMENT_NOT_FOUND"})
+        )
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
+            with pytest.raises(NotFoundError) as excinfo:
+                await client.documents.delete("missing")
+        assert excinfo.value.status == 404
+        assert excinfo.value.code == "DOCUMENT_NOT_FOUND"
