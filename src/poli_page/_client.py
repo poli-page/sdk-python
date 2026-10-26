@@ -86,8 +86,10 @@ class PoliPage:
     `.close()`) to release sockets deterministically.
 
     Examples:
-        client = PoliPage(api_key="pp_test_...")
-        preview = client.render.preview({"template": "<p>{{ name }}</p>", "data": {"name": "Ada"}})
+        client = PoliPage(api_key="pp_sandbox_...")
+        pdf = client.render.pdf(
+            {"project": "getting-started", "template": "welcome", "data": {"name": "Ada"}}
+        )
     """
 
     def __init__(

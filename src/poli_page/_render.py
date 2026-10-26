@@ -1,12 +1,12 @@
 """`render.*` namespaces — sync and async (plan §3.1, §5).
 
 Two parallel classes: `RenderSync` consumes `PoliPage._request_json` and
-`_fetch_bytes`; `RenderAsync` does the same with `await`. The four spec
-methods (`pdf`, `pdf_stream`, `preview`, `document`) appear on both with
-identical signatures modulo `async def` / `await`.
+`_fetch_bytes`; `RenderAsync` does the same with `await`. The three spec
+methods (`pdf`, `pdf_stream`, `document`) appear on both with identical
+signatures modulo `async def` / `await`.
 
-Inline mode is rejected locally on the project-mode-only methods (`pdf`,
-`pdf_stream`, `document`); `preview` accepts either mode.
+Every render targets a stored project + template; input without a `project`
+is rejected locally before any HTTP call.
 """
 
 from __future__ import annotations
@@ -14,17 +14,14 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterator
 from typing import TYPE_CHECKING, Any, cast
 
-from poli_page._constants import PATH_RENDER, PATH_RENDER_PREVIEW
+from poli_page._constants import PATH_RENDER
 from poli_page._errors import PoliPageError
-from poli_page._transport import from_wire, to_wire
+from poli_page._transport import RENDER_WIRE_FIELDS, from_wire, to_wire
 from poli_page.types import (
     AsyncDocumentDescriptor,
     DocumentDescriptor,
-    Environment,
     Orientation,
     PageFormat,
-    PreviewResult,
-    ProjectModeInput,
     RenderInput,
     RenderMetadata,
 )
@@ -45,33 +42,23 @@ class RenderSync:
     def __init__(self, client: PoliPage) -> None:
         self._client = client
 
-    def preview(self, input: RenderInput) -> PreviewResult:
-        """Generate paginated HTML preview output (spec §5.3)."""
-        idempotency_key = input.get("idempotency_key")
-        timeout = input.get("timeout")
-        body = to_wire(input)
-        raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key, timeout=timeout
-        )
-        return _make_preview_result(raw)
-
-    def document(self, input: ProjectModeInput) -> DocumentDescriptor:
+    def document(self, input: RenderInput) -> DocumentDescriptor:
         """Render a PDF, store it server-side, return the descriptor (spec §5.2)."""
         _require_project_mode(input)
         idempotency_key = input.get("idempotency_key")
         timeout = input.get("timeout")
-        body = to_wire(input)
+        body = to_wire(input, RENDER_WIRE_FIELDS)
         raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         return _build_descriptor(self._client, raw)
 
-    def pdf(self, input: ProjectModeInput) -> bytes:
+    def pdf(self, input: RenderInput) -> bytes:
         """Render a PDF and return its raw bytes (two HTTP calls: render + S3)."""
         descriptor = self.document(input)
         return descriptor.download_pdf()
 
-    def pdf_stream(self, input: ProjectModeInput) -> _PdfStreamContext:
+    def pdf_stream(self, input: RenderInput) -> _PdfStreamContext:
         """Render a PDF and return a streaming context manager (plan §5.6)."""
         descriptor = self.document(input)
         return _PdfStreamContext(self._client, descriptor.presigned_pdf_url)
@@ -88,35 +75,26 @@ class RenderAsync:
     def __init__(self, client: AsyncPoliPage) -> None:
         self._client = client
 
-    async def preview(self, input: RenderInput) -> PreviewResult:
-        idempotency_key = input.get("idempotency_key")
-        timeout = input.get("timeout")
-        body = to_wire(input)
-        raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
-            "POST", PATH_RENDER_PREVIEW, body=body, idempotency_key=idempotency_key, timeout=timeout
-        )
-        return _make_preview_result(raw)
-
-    async def document(self, input: ProjectModeInput) -> AsyncDocumentDescriptor:
+    async def document(self, input: RenderInput) -> AsyncDocumentDescriptor:
         _require_project_mode(input)
         idempotency_key = input.get("idempotency_key")
         timeout = input.get("timeout")
-        body = to_wire(input)
+        body = to_wire(input, RENDER_WIRE_FIELDS)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         return _build_async_descriptor(self._client, raw)
 
-    async def pdf(self, input: ProjectModeInput) -> bytes:
+    async def pdf(self, input: RenderInput) -> bytes:
         descriptor = await self.document(input)
         return await descriptor.download_pdf()
 
-    def pdf_stream(self, input: ProjectModeInput) -> _AsyncPdfStreamCoroutineCM:
+    def pdf_stream(self, input: RenderInput) -> _AsyncPdfStreamCoroutineCM:
         """Return an async-with-able object that fetches the descriptor lazily.
 
         `async with client.render.pdf_stream(input) as chunks:` — the
         `POST /v1/render` happens on entry, followed by the streaming GET
-        against `presigned_pdf_url`. Inline-mode validation also runs at
+        against `presigned_pdf_url`. The missing-`project` check also runs at
         `__aenter__` time (await is needed to surface PoliPageError).
         """
         return _AsyncPdfStreamCoroutineCM(self._client, input)
@@ -127,27 +105,17 @@ class RenderAsync:
 # ---------------------------------------------------------------------------
 
 
-def _require_project_mode(input: ProjectModeInput) -> None:
-    """Reject inline-shaped input on document/pdf/pdf_stream methods.
+def _require_project_mode(input: RenderInput) -> None:
+    """Reject input without a `project` before any HTTP call.
 
     Mirrors the API's `PROJECT_REQUIRED_FOR_DOCUMENT` error locally so the
     SDK fails fast without an HTTP round trip.
     """
     if not input.get("project"):
         raise PoliPageError(
-            "project is required for render.pdf / render.pdf_stream / render.document. "
-            "Use render.preview for inline HTML rendering.",
+            "project is required for render.pdf / render.pdf_stream / render.document.",
             code="PROJECT_REQUIRED_FOR_DOCUMENT",
         )
-
-
-def _make_preview_result(raw: dict[str, Any]) -> PreviewResult:
-    result = from_wire(raw)
-    return PreviewResult(
-        html=cast(str, result["html"]),
-        total_pages=cast(int, result["total_pages"]),
-        environment=cast(Environment, result["environment"]),
-    )
 
 
 def _descriptor_init_kwargs(raw: dict[str, Any]) -> dict[str, Any]:
@@ -160,8 +128,7 @@ def _descriptor_init_kwargs(raw: dict[str, Any]) -> dict[str, Any]:
         "project_slug": cast("str | None", snake.get("project_slug")),
         "template_id": cast("str | None", snake.get("template_id")),
         "template_slug": cast("str | None", snake.get("template_slug")),
-        "version": cast("str | None", snake.get("version")),
-        "environment": cast(Environment, snake["environment"]),
+        "environment": cast(str, snake["environment"]),
         "api_key_id": cast("str | None", snake.get("api_key_id")),
         "format": cast(PageFormat, snake["format"]),
         "orientation": cast("Orientation | None", snake.get("orientation")),
@@ -219,12 +186,12 @@ class _AsyncPdfStreamCoroutineCM:
 
     Single class composes the `POST /v1/render` (to fetch the descriptor)
     with the streaming GET against `presigned_pdf_url`. Both happen on
-    `__aenter__` so inline-mode validation also surfaces there.
+    `__aenter__` so the missing-`project` check also surfaces there.
     """
 
     __slots__ = ("_client", "_input", "_stream_cm")
 
-    def __init__(self, client: AsyncPoliPage, input: ProjectModeInput) -> None:
+    def __init__(self, client: AsyncPoliPage, input: RenderInput) -> None:
         self._client = client
         self._input = input
         self._stream_cm: object | None = None
@@ -233,7 +200,7 @@ class _AsyncPdfStreamCoroutineCM:
         _require_project_mode(self._input)
         idempotency_key = self._input.get("idempotency_key")
         timeout = self._input.get("timeout")
-        body = to_wire(self._input)
+        body = to_wire(self._input, RENDER_WIRE_FIELDS)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
         )

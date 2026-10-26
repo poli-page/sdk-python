@@ -18,10 +18,12 @@ from poli_page import (
     AuthenticationError,
     BadRequestError,
     InternalServerError,
+    NotFoundError,
     PermissionDeniedError,
     PoliPage,
     PoliPageError,
     RateLimitError,
+    RenderInput,
     RetryEvent,
 )
 from poli_page._constants import (
@@ -32,6 +34,29 @@ from poli_page._constants import (
 )
 
 TEST_BASE_URL = "https://test.example"
+
+RENDER_INPUT: RenderInput = {"project": "billing", "template": "invoice", "data": {}}
+
+# Wire-shape descriptor that `POST /v1/render` answers with.
+RENDER_RESPONSE: dict[str, object] = {
+    "documentId": "doc_render",
+    "organizationId": "org_x",
+    "projectId": "proj_p",
+    "projectSlug": "billing",
+    "templateId": "tpl_t",
+    "templateSlug": "invoice",
+    "environment": "sandbox",
+    "apiKeyId": "key_x",
+    "format": "A4",
+    "orientation": "portrait",
+    "locale": "en-US",
+    "pageCount": 1,
+    "sizeBytes": 100,
+    "createdAt": "2026-01-01T00:00:00Z",
+    "metadata": {},
+    "presignedPdfUrl": "https://presigned.example/x.pdf",
+    "expiresAt": "2026-01-01T00:15:00Z",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -59,30 +84,30 @@ class TestConstructor:
         assert excinfo.value.code == "invalid_options"
 
     def test_accepts_explicit_api_key(self) -> None:
-        client = PoliPage(api_key="pp_test_abc")
+        client = PoliPage(api_key="pp_sandbox_abc")
         assert isinstance(client, PoliPage)
         client.close()
 
     def test_picks_up_api_key_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("POLI_PAGE_API_KEY", "pp_test_from_env")
+        monkeypatch.setenv("POLI_PAGE_API_KEY", "pp_sandbox_from_env")
         client = PoliPage()
         assert isinstance(client, PoliPage)
         client.close()
 
     def test_picks_up_base_url_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("POLI_PAGE_BASE_URL", "https://custom.example")
-        client = PoliPage(api_key="pp_test_abc")
+        client = PoliPage(api_key="pp_sandbox_abc")
         assert client.base_url == "https://custom.example"
         client.close()
 
     def test_default_base_url_when_no_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("POLI_PAGE_BASE_URL", raising=False)
-        client = PoliPage(api_key="pp_test_abc")
+        client = PoliPage(api_key="pp_sandbox_abc")
         assert client.base_url == DEFAULT_BASE_URL
         client.close()
 
     def test_default_retry_options_match_constants(self) -> None:
-        client = PoliPage(api_key="pp_test_abc")
+        client = PoliPage(api_key="pp_sandbox_abc")
         assert client.max_retries == DEFAULT_MAX_RETRIES
         assert client.retry_delay == DEFAULT_RETRY_DELAY_SECONDS
         assert client.timeout == DEFAULT_TIMEOUT_SECONDS
@@ -90,7 +115,7 @@ class TestConstructor:
 
     def test_custom_retry_options_accepted(self) -> None:
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             max_retries=5,
             retry_delay=1.0,
             timeout=10.0,
@@ -107,14 +132,14 @@ class TestConstructor:
         client.close()
 
     def test_context_manager_closes_owned_http_client(self) -> None:
-        with PoliPage(api_key="pp_test_abc") as client:
+        with PoliPage(api_key="pp_sandbox_abc") as client:
             assert isinstance(client, PoliPage)
         # http_client is closed; further requests would fail. Don't try
         # making one — just trust httpx's close().
 
     def test_inject_custom_http_client_is_not_closed_by_sdk(self) -> None:
         external = httpx.Client()
-        client = PoliPage(api_key="pp_test_abc", http_client=external)
+        client = PoliPage(api_key="pp_sandbox_abc", http_client=external)
         client.close()
         # External client survives client.close() — that's the contract.
         assert not external.is_closed
@@ -127,7 +152,7 @@ class TestRepr:
     """
 
     def test_repr_does_not_leak_api_key(self) -> None:
-        secret = "pp_test_super_secret_value_do_not_leak_42"
+        secret = "pp_sandbox_super_secret_value_do_not_leak_42"
         client = PoliPage(api_key=secret, base_url=TEST_BASE_URL)
         rendered = repr(client)
         assert secret not in rendered
@@ -136,7 +161,7 @@ class TestRepr:
         client.close()
 
     def test_repr_shows_masked_prefix(self) -> None:
-        client = PoliPage(api_key="pp_test_super_secret_value", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_super_secret_value", base_url=TEST_BASE_URL)
         rendered = repr(client)
         assert "PoliPage" in rendered
         # Some recognizable prefix is fine; the bulk must be masked.
@@ -144,7 +169,7 @@ class TestRepr:
         client.close()
 
     def test_repr_includes_base_url(self) -> None:
-        client = PoliPage(api_key="pp_test_abc", base_url="https://api.example/v9")
+        client = PoliPage(api_key="pp_sandbox_abc", base_url="https://api.example/v9")
         rendered = repr(client)
         assert "https://api.example/v9" in rendered
         client.close()
@@ -163,7 +188,7 @@ class TestWithOptions:
     """
 
     def test_returns_new_instance(self) -> None:
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
         branched = client.with_options(timeout=99.0)
         assert branched is not client
         assert isinstance(branched, PoliPage)
@@ -172,7 +197,7 @@ class TestWithOptions:
 
     def test_overrides_apply(self) -> None:
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             timeout=10.0,
             max_retries=2,
@@ -185,7 +210,7 @@ class TestWithOptions:
 
     def test_unspecified_options_inherited(self) -> None:
         client = PoliPage(
-            api_key="pp_test_inherited",
+            api_key="pp_sandbox_inherited",
             base_url="https://api.example/v9",
             timeout=12.5,
             max_retries=4,
@@ -200,7 +225,7 @@ class TestWithOptions:
 
     def test_does_not_mutate_original(self) -> None:
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             timeout=10.0,
             max_retries=2,
@@ -213,7 +238,7 @@ class TestWithOptions:
     def test_owns_its_own_http_client(self) -> None:
         # Branched client must not share the parent's http_client — closing
         # one would otherwise close the other.
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
         branched = client.with_options(timeout=99.0)
         assert branched._http_client is not client._http_client
         client.close()
@@ -221,72 +246,54 @@ class TestWithOptions:
         branched.close()
 
 
-class TestPreviewHappyPath:
+class TestRenderRequestBody:
     @respx.mock
-    def test_posts_to_render_preview(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200,
-                json={"html": "<p>x</p>", "totalPages": 1, "environment": "sandbox"},
-            )
+    def test_posts_to_render(self) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        result = client.render.preview({"template": "<p>x</p>", "data": {}})
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        result = client.render.document(RENDER_INPUT)
         assert route.called
-        assert result.html == "<p>x</p>"
-        assert result.total_pages == 1
+        assert result.document_id == "doc_render"
+        assert result.page_count == 1
         assert result.environment == "sandbox"
 
     @respx.mock
-    def test_accepts_inline_mode(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200,
-                json={"html": "<h1>x</h1>", "totalPages": 1, "environment": "sandbox"},
-            )
+    def test_sends_the_project_mode_fields(self) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview({"template": "<h1>inline</h1>", "data": {}})
-        sent = route.calls.last.request.read().decode()
-        assert '"template":"<h1>inline</h1>"' in sent.replace(" ", "")
-
-    @respx.mock
-    def test_accepts_project_mode(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200,
-                json={"html": "", "totalPages": 1, "environment": "sandbox"},
-            )
-        )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview(
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document(
             {
                 "project": "billing",
                 "template": "invoice",
-                "version": "1.0.0",
                 "data": {"amount": 100},
+                "format": "A5",
+                "orientation": "landscape",
+                "locale": "fr-FR",
             }
         )
         import json
 
         body = json.loads(route.calls.last.request.read())
-        assert body["project"] == "billing"
-        assert body["template"] == "invoice"
-        assert body["version"] == "1.0.0"
-        assert body["data"] == {"amount": 100}
+        assert body == {
+            "project": "billing",
+            "template": "invoice",
+            "data": {"amount": 100},
+            "format": "A5",
+            "orientation": "landscape",
+            "locale": "fr-FR",
+        }
 
     @respx.mock
     def test_forwards_metadata(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200,
-                json={"html": "", "totalPages": 1, "environment": "sandbox"},
-            )
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview(
-            {"template": "<p>x</p>", "data": {}, "metadata": {"customer_id": "cust_1"}}
-        )
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document({**RENDER_INPUT, "metadata": {"customer_id": "cust_1"}})
         import json
 
         body = json.loads(route.calls.last.request.read())
@@ -294,17 +301,13 @@ class TestPreviewHappyPath:
 
     @respx.mock
     def test_strips_idempotency_key_and_timeout_from_body(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200,
-                json={"html": "", "totalPages": 1, "environment": "sandbox"},
-            )
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview(
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document(
             {
-                "template": "<p>x</p>",
-                "data": {},
+                **RENDER_INPUT,
                 "idempotency_key": "caller-set-key",
                 "timeout": 5.0,
             }
@@ -318,64 +321,83 @@ class TestPreviewHappyPath:
         # The header carries the caller-set key.
         assert route.calls.last.request.headers["Idempotency-Key"] == "caller-set-key"
 
+    @respx.mock
+    def test_unknown_input_keys_are_not_sent(self) -> None:
+        # The API answers 400 VALIDATION_ERROR to `version`, `environment` or any
+        # other unknown field; a dynamically built dict must not leak one.
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
+        )
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document(
+            {**RENDER_INPUT, "version": "1.0.0", "environment": "live", "extra": True}  # type: ignore[typeddict-unknown-key]
+        )
+        import json
+
+        body = json.loads(route.calls.last.request.read())
+        assert body == {"project": "billing", "template": "invoice", "data": {}}
+
+    @respx.mock
+    def test_unset_optional_fields_are_omitted_not_null(self) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
+        )
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document({**RENDER_INPUT, "locale": None})  # type: ignore[typeddict-item]
+        import json
+
+        body = json.loads(route.calls.last.request.read())
+        assert "locale" not in body
+        assert "format" not in body
+
 
 class TestRequestHeaders:
     @respx.mock
     def test_sends_bearer_authorization(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_xyz", base_url=TEST_BASE_URL)
-        client.render.preview({"template": "<p>x</p>", "data": {}})
-        assert route.calls.last.request.headers["Authorization"] == "Bearer pp_test_xyz"
+        client = PoliPage(api_key="pp_sandbox_xyz", base_url=TEST_BASE_URL)
+        client.render.document(RENDER_INPUT)
+        assert route.calls.last.request.headers["Authorization"] == "Bearer pp_sandbox_xyz"
 
     @respx.mock
     def test_sends_user_agent_with_sdk_version(self) -> None:
         from poli_page._version import __version__
 
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document(RENDER_INPUT)
         ua = route.calls.last.request.headers["User-Agent"]
         assert ua == f"poli-page-sdk-python/{__version__}"
 
     @respx.mock
     def test_sends_accept_application_json(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document(RENDER_INPUT)
         assert route.calls.last.request.headers["Accept"] == "application/json"
 
     @respx.mock
     def test_sends_content_type_application_json(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document(RENDER_INPUT)
         assert route.calls.last.request.headers["Content-Type"] == "application/json"
 
     @respx.mock
     def test_auto_generates_idempotency_key_when_not_set(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        client.render.document(RENDER_INPUT)
         idem = route.calls.last.request.headers["Idempotency-Key"]
         # UUID4 is 36 chars with 4 dashes (8-4-4-4-12).
         assert len(idem) == 36
@@ -397,16 +419,16 @@ class TestErrorMapping:
     def test_raises_classified_subclass_for_status(
         self, status: int, expected_cls: type[PoliPageError]
     ) -> None:
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(
                 status,
                 json={"code": "SOMETHING", "message": "boom"},
                 headers={"x-request-id": "req_xyz"},
             )
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, max_retries=0)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0)
         with pytest.raises(expected_cls) as excinfo:
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         err = excinfo.value
         assert isinstance(err, PoliPageError)
         assert err.status == status
@@ -415,35 +437,67 @@ class TestErrorMapping:
 
     @respx.mock
     def test_html_error_body_yields_internal_error(self) -> None:
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(
                 502, content="<html>upstream gone</html>", headers={"Content-Type": "text/html"}
             )
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, max_retries=0)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0)
         with pytest.raises(InternalServerError) as excinfo:
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         assert excinfo.value.code == "INTERNAL_ERROR"
         assert excinfo.value.status == 502
 
     @respx.mock
+    def test_template_not_found_reads_code_from_error_field(self) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(
+                404,
+                json={
+                    "error": "TEMPLATE_NOT_FOUND",
+                    "detail": "Template 'invoice' is not published in staging",
+                    "requestId": "req_tpl",
+                },
+            )
+        )
+        client = PoliPage(api_key="pp_staging_abc", base_url=TEST_BASE_URL, max_retries=0)
+        with pytest.raises(NotFoundError) as excinfo:
+            client.render.document(RENDER_INPUT)
+        assert excinfo.value.code == "TEMPLATE_NOT_FOUND"
+        assert str(excinfo.value) == "Template 'invoice' is not published in staging"
+        assert excinfo.value.status == 404
+
+    @respx.mock
+    def test_unknown_code_passes_through_verbatim(self) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(
+                409, json={"error": "SOME_FUTURE_CODE", "detail": "not known to this SDK"}
+            )
+        )
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0)
+        with pytest.raises(PoliPageError) as excinfo:
+            client.render.document(RENDER_INPUT)
+        assert excinfo.value.code == "SOME_FUTURE_CODE"
+        assert str(excinfo.value) == "not known to this SDK"
+
+    @respx.mock
     def test_network_error_classified_as_apiconnectionerror(self) -> None:
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             side_effect=httpx.ConnectError("connection refused")
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, max_retries=0)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0)
         with pytest.raises(APIConnectionError) as excinfo:
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         assert excinfo.value.code == "network_error"
 
     @respx.mock
     def test_timeout_raises_apitimeouterror(self) -> None:
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             side_effect=httpx.ReadTimeout("read timed out")
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, max_retries=0)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0)
         with pytest.raises(APITimeoutError) as excinfo:
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         assert excinfo.value.code == "timeout"
 
 
@@ -453,79 +507,79 @@ class TestRetryLoop:
         responses = [
             httpx.Response(500, json={"code": "boom"}),
             httpx.Response(500, json={"code": "boom"}),
-            httpx.Response(200, json={"html": "ok", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=3,
             retry_delay=0.01,
         )
-        result = client.render.preview({"template": "<p>x</p>", "data": {}})
-        assert result.html == "ok"
+        result = client.render.document(RENDER_INPUT)
+        assert result.document_id == "doc_render"
         assert route.call_count == 3
 
     @respx.mock
     def test_does_not_retry_4xx(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(400, json={"code": "bad_request"})
         )
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=3,
             retry_delay=0.01,
         )
         with pytest.raises(BadRequestError):
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         assert route.call_count == 1
 
     @respx.mock
     def test_retries_429(self) -> None:
         responses = [
             httpx.Response(429, json={"code": "rate_limited"}),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=2,
             retry_delay=0.01,
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         assert route.call_count == 2
 
     @respx.mock
     def test_retries_network_errors(self) -> None:
         responses: list[Any] = [
             httpx.ConnectError("refused"),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=2,
             retry_delay=0.01,
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         assert route.call_count == 2
 
     @respx.mock
     def test_exhausted_retries_raises_last_error(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(500, json={"code": "boom"})
         )
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=2,
             retry_delay=0.01,
         )
         with pytest.raises(InternalServerError):
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         # 1 initial + 2 retries = 3 calls.
         assert route.call_count == 3
 
@@ -535,18 +589,59 @@ class TestRetryLoop:
         monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "0"}),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=2,
             retry_delay=10.0,
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         # Retry-After: 0 → immediate retry (sleep with 0.0).
         assert sleeps == [0.0]
+
+    @respx.mock
+    def test_publish_in_progress_retried_after_retry_after(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sleeps: list[float] = []
+        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        responses = [
+            httpx.Response(
+                503, json={"error": "PUBLISH_IN_PROGRESS"}, headers={"Retry-After": "1"}
+            ),
+            httpx.Response(200, json=RENDER_RESPONSE),
+        ]
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, retry_delay=10.0)
+        result = client.render.document(RENDER_INPUT)
+        assert result.document_id == "doc_render"
+        assert route.call_count == 2
+        assert sleeps == [1.0]
+
+    @respx.mock
+    def test_publish_in_progress_surfaces_once_retries_exhausted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sleeps: list[float] = []
+        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(
+                503,
+                json={"error": "PUBLISH_IN_PROGRESS", "detail": "A publish is in progress"},
+                headers={"Retry-After": "1"},
+            )
+        )
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
+        with pytest.raises(InternalServerError) as excinfo:
+            client.render.document(RENDER_INPUT)
+        assert excinfo.value.code == "PUBLISH_IN_PROGRESS"
+        assert excinfo.value.status == 503
+        # Default max_retries (2): 1 initial + 2 retries, each after Retry-After.
+        assert route.call_count == 1 + DEFAULT_MAX_RETRIES
+        assert sleeps == [1.0] * DEFAULT_MAX_RETRIES
 
     @respx.mock
     def test_retry_after_capped_at_30(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -554,16 +649,16 @@ class TestRetryLoop:
         monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "999"}),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=2,
             retry_delay=0.01,
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         assert sleeps == [30.0]
 
     @respx.mock
@@ -576,24 +671,24 @@ class TestRetryLoop:
                 json={"code": "down"},
                 headers={"Retry-After": "5", "Retry-After-Ms": "250"},
             ),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc", base_url=TEST_BASE_URL, max_retries=2, retry_delay=10.0
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2, retry_delay=10.0
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         # 250 ms → 0.25 s, takes precedence over Retry-After: 5.
         assert sleeps == [0.25]
 
     @respx.mock
     def test_max_retries_zero_disables_retries(self) -> None:
-        route = respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(500, json={"code": "boom"})
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, max_retries=0)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0)
         with pytest.raises(InternalServerError):
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         assert route.call_count == 1
 
 
@@ -604,17 +699,17 @@ class TestHooks:
         responses = [
             httpx.Response(500, json={"code": "boom"}),
             httpx.Response(500, json={"code": "boom"}),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=3,
             retry_delay=0.01,
             on_retry=events.append,
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         # Two retries → two events.
         assert len(events) == 2
         assert events[0].attempt == 2  # 1-based, the attempt about to be made
@@ -624,17 +719,17 @@ class TestHooks:
     @respx.mock
     def test_on_error_fires_once_on_terminal_failure(self) -> None:
         errors: list[PoliPageError] = []
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(400, json={"code": "bad"})
         )
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=0,
             on_error=errors.append,
         )
         with pytest.raises(BadRequestError):
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         assert len(errors) == 1
         assert errors[0].status == 400
 
@@ -643,21 +738,19 @@ class TestHooks:
         def hostile_hook(_e: object) -> None:
             raise RuntimeError("hook raised")
 
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "ok", "totalPages": 1, "environment": "sandbox"}
-            )
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             on_retry=hostile_hook,
             on_error=hostile_hook,
         )
         # Should succeed even though hooks would raise (they're only fired
         # on retry/error paths and must be swallowed).
-        result = client.render.preview({"template": "<p>x</p>", "data": {}})
-        assert result.html == "ok"
+        result = client.render.document(RENDER_INPUT)
+        assert result.document_id == "doc_render"
 
     @respx.mock
     def test_on_request_fires_before_each_attempt(self) -> None:
@@ -666,21 +759,21 @@ class TestHooks:
         events: list[RequestEvent] = []
         responses = [
             httpx.Response(500, json={"code": "boom"}),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=2,
             retry_delay=0.01,
             on_request=events.append,
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         # Two attempts (initial + 1 retry).
         assert len(events) == 2
         assert events[0].method == "POST"
-        assert events[0].url == f"{TEST_BASE_URL}/v1/render/preview"
+        assert events[0].url == f"{TEST_BASE_URL}/v1/render"
         assert events[0].attempt == 1
         assert events[1].attempt == 2
 
@@ -689,29 +782,29 @@ class TestHooks:
         def hostile(_e: object) -> None:
             raise RuntimeError("boom")
 
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "ok", "totalPages": 1, "environment": "sandbox"}
-            )
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, on_request=hostile)
-        result = client.render.preview({"template": "<p>x</p>", "data": {}})
-        assert result.html == "ok"
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, on_request=hostile)
+        result = client.render.document(RENDER_INPUT)
+        assert result.document_id == "doc_render"
 
     @respx.mock
     def test_on_response_fires_on_success(self) -> None:
         from poli_page import ResponseEvent
 
         events: list[ResponseEvent] = []
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(
                 200,
-                json={"html": "", "totalPages": 1, "environment": "sandbox"},
+                json=RENDER_RESPONSE,
                 headers={"x-request-id": "req_xyz"},
             )
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append)
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client = PoliPage(
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, on_response=events.append
+        )
+        client.render.document(RENDER_INPUT)
         assert len(events) == 1
         assert events[0].status == 200
         assert events[0].request_id == "req_xyz"
@@ -722,17 +815,17 @@ class TestHooks:
         from poli_page import ResponseEvent
 
         events: list[ResponseEvent] = []
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(500, json={"code": "boom"})
         )
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=0,
             on_response=events.append,
         )
         with pytest.raises(InternalServerError):
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         assert events == []
 
     @respx.mock
@@ -740,13 +833,13 @@ class TestHooks:
         from poli_page import ResponseEvent
 
         events: list[ResponseEvent] = []
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, on_response=events.append)
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client = PoliPage(
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, on_response=events.append
+        )
+        client.render.document(RENDER_INPUT)
         assert events[0].request_id is None
 
     @respx.mock
@@ -755,17 +848,17 @@ class TestHooks:
         events: list[RetryEvent] = []
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After-Ms": "250"}),
-            httpx.Response(200, json={"html": "", "totalPages": 1, "environment": "sandbox"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
         ]
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(side_effect=responses)
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
         client = PoliPage(
-            api_key="pp_test_abc",
+            api_key="pp_sandbox_abc",
             base_url=TEST_BASE_URL,
             max_retries=2,
             retry_delay=10.0,
             on_retry=events.append,
         )
-        client.render.preview({"template": "<p>x</p>", "data": {}})
+        client.render.document(RENDER_INPUT)
         assert len(events) == 1
         # 250 ms server-instructed delay → event.delay_ms == 250.0
         assert events[0].delay_ms == 250.0
@@ -784,16 +877,14 @@ class TestPerCallTimeout:
             captured.update(kwargs)
             return real_request(self, *args, **kwargs)
 
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, timeout=60.0)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, timeout=60.0)
         # Monkey-patch via context — we don't want global side-effects.
         with pytest.MonkeyPatch().context() as mp:
             mp.setattr(httpx.Client, "request", spy)
-            client.render.preview({"template": "<p>x</p>", "data": {}, "timeout": 5.0})
+            client.render.document({**RENDER_INPUT, "timeout": 5.0})  # type: ignore[arg-type]
         # httpx accepts `timeout` as a float or httpx.Timeout.
         assert "timeout" in captured
         # Either a bare float of 5.0, or an httpx.Timeout configured to 5.0.
@@ -809,15 +900,13 @@ class TestPerCallTimeout:
             captured.update(kwargs)
             return real_request(self, *args, **kwargs)
 
-        respx.post(f"{TEST_BASE_URL}/v1/render/preview").mock(
-            return_value=httpx.Response(
-                200, json={"html": "", "totalPages": 1, "environment": "sandbox"}
-            )
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(200, json=RENDER_RESPONSE)
         )
-        client = PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL, timeout=42.0)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, timeout=42.0)
         with pytest.MonkeyPatch().context() as mp:
             mp.setattr(httpx.Client, "request", spy)
-            client.render.preview({"template": "<p>x</p>", "data": {}})
+            client.render.document(RENDER_INPUT)
         # No per-call timeout was provided — httpx.request is called without
         # an explicit timeout kwarg, so it inherits the client-level timeout.
         assert "timeout" not in captured

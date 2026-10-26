@@ -1,4 +1,4 @@
-# Demonstrates: client.render.pdf_stream(input) — project mode only.
+# Demonstrates: client.render.pdf_stream(input) — stream a rendered PDF in chunks.
 from poli_page import PoliPage
 
 client = PoliPage()

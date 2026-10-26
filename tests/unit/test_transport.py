@@ -15,10 +15,13 @@ from poli_page._constants import (
     RETRY_AFTER_CAP_SECONDS,
 )
 from poli_page._transport import (
+    RENDER_WIRE_FIELDS,
+    THUMBNAIL_WIRE_FIELDS,
     build_headers,
     build_url,
     compute_backoff,
     from_wire,
+    mask_api_key,
     parse_error_body,
     parse_retry_after,
     to_wire,
@@ -177,47 +180,49 @@ class TestBuildHeaders:
     UA = "poli-page-sdk-python/1.0.0"
 
     def test_post_sets_accept_json(self) -> None:
-        h = build_headers("POST", api_key="pp_test_x", idempotency_key="i", user_agent=self.UA)
+        h = build_headers("POST", api_key="pp_sandbox_x", idempotency_key="i", user_agent=self.UA)
         assert h["Accept"] == "application/json"
 
     def test_post_sets_content_type_json(self) -> None:
-        h = build_headers("POST", api_key="pp_test_x", idempotency_key="i", user_agent=self.UA)
+        h = build_headers("POST", api_key="pp_sandbox_x", idempotency_key="i", user_agent=self.UA)
         assert h["Content-Type"] == "application/json"
 
     def test_sets_authorization_with_bearer_prefix(self) -> None:
-        h = build_headers("POST", api_key="pp_test_xyz", idempotency_key="i", user_agent=self.UA)
-        assert h["Authorization"] == "Bearer pp_test_xyz"
+        h = build_headers("POST", api_key="pp_sandbox_xyz", idempotency_key="i", user_agent=self.UA)
+        assert h["Authorization"] == "Bearer pp_sandbox_xyz"
 
     def test_sets_user_agent_verbatim(self) -> None:
         h = build_headers(
-            "POST", api_key="pp_test_x", idempotency_key="i", user_agent="custom-ua/9.9.9"
+            "POST", api_key="pp_sandbox_x", idempotency_key="i", user_agent="custom-ua/9.9.9"
         )
         assert h["User-Agent"] == "custom-ua/9.9.9"
 
     def test_sets_idempotency_key_header_from_arg(self) -> None:
         h = build_headers(
-            "POST", api_key="pp_test_x", idempotency_key="idem-abc-123", user_agent=self.UA
+            "POST", api_key="pp_sandbox_x", idempotency_key="idem-abc-123", user_agent=self.UA
         )
         assert h["Idempotency-Key"] == "idem-abc-123"
 
     def test_get_omits_content_type_and_idempotency_key(self) -> None:
-        h = build_headers("GET", api_key="pp_test_x", idempotency_key=None, user_agent=self.UA)
+        h = build_headers("GET", api_key="pp_sandbox_x", idempotency_key=None, user_agent=self.UA)
         assert "Content-Type" not in h
         assert "Idempotency-Key" not in h
-        assert h["Authorization"] == "Bearer pp_test_x"
+        assert h["Authorization"] == "Bearer pp_sandbox_x"
         assert h["User-Agent"] == self.UA
         assert h["Accept"] == "application/json"
 
     def test_delete_omits_content_type_and_idempotency_key(self) -> None:
-        h = build_headers("DELETE", api_key="pp_test_x", idempotency_key=None, user_agent=self.UA)
+        h = build_headers(
+            "DELETE", api_key="pp_sandbox_x", idempotency_key=None, user_agent=self.UA
+        )
         assert "Content-Type" not in h
         assert "Idempotency-Key" not in h
-        assert h["Authorization"] == "Bearer pp_test_x"
+        assert h["Authorization"] == "Bearer pp_sandbox_x"
 
     def test_post_without_idempotency_key_omits_header(self) -> None:
         # The retry loop may omit the key for non-state-mutating POSTs (none today,
         # but the transport must support it). Mirrors Node's `if (idempotencyKey)` guard.
-        h = build_headers("POST", api_key="pp_test_x", idempotency_key=None, user_agent=self.UA)
+        h = build_headers("POST", api_key="pp_sandbox_x", idempotency_key=None, user_agent=self.UA)
         assert "Idempotency-Key" not in h
         assert h["Content-Type"] == "application/json"
 
@@ -249,38 +254,103 @@ class TestBuildUrl:
 
 class TestToWire:
     def test_strips_idempotency_key(self) -> None:
-        body = to_wire({"project": "p", "template": "t", "data": {}, "idempotency_key": "abc"})
+        body = to_wire(
+            {"project": "p", "template": "t", "data": {}, "idempotency_key": "abc"},
+            RENDER_WIRE_FIELDS,
+        )
         assert "idempotency_key" not in body
         assert "idempotencyKey" not in body
         assert body == {"project": "p", "template": "t", "data": {}}
 
     def test_strips_timeout(self) -> None:
-        body = to_wire({"project": "p", "template": "t", "data": {}, "timeout": 30.0})
+        body = to_wire(
+            {"project": "p", "template": "t", "data": {}, "timeout": 30.0}, RENDER_WIRE_FIELDS
+        )
         assert "timeout" not in body
         assert body == {"project": "p", "template": "t", "data": {}}
 
     def test_converts_snake_case_to_camel_case_at_top_level(self) -> None:
-        body = to_wire({"page_count": 3, "presigned_pdf_url": "https://x"})
+        body = to_wire(
+            {"page_count": 3, "presigned_pdf_url": "https://x"},
+            ("page_count", "presigned_pdf_url"),
+        )
         assert body == {"pageCount": 3, "presignedPdfUrl": "https://x"}
 
     def test_does_not_recurse_into_user_data_dict(self) -> None:
         # User template data is freeform — its keys must reach the renderer verbatim,
         # snake_case and all.
-        body = to_wire({"project": "p", "template": "t", "data": {"first_name": "Ada"}})
+        body = to_wire(
+            {"project": "p", "template": "t", "data": {"first_name": "Ada"}}, RENDER_WIRE_FIELDS
+        )
         assert body == {"project": "p", "template": "t", "data": {"first_name": "Ada"}}
 
     def test_does_not_recurse_into_metadata(self) -> None:
-        body = to_wire({"metadata": {"order_id": "o_1", "is_paid": True}})
+        body = to_wire({"metadata": {"order_id": "o_1", "is_paid": True}}, RENDER_WIRE_FIELDS)
         assert body == {"metadata": {"order_id": "o_1", "is_paid": True}}
 
     def test_input_dict_is_not_mutated(self) -> None:
         original = {"project": "p", "template": "t", "data": {}, "idempotency_key": "abc"}
         snapshot = dict(original)
-        to_wire(original)
+        to_wire(original, RENDER_WIRE_FIELDS)
         assert original == snapshot
 
     def test_empty_dict_returns_empty(self) -> None:
-        assert to_wire({}) == {}
+        assert to_wire({}, RENDER_WIRE_FIELDS) == {}
+
+    def test_drops_every_key_outside_the_allowed_fields(self) -> None:
+        # A dynamically built dict can carry keys the API rejects with
+        # 400 VALIDATION_ERROR (`version`, `environment`, typos); none reach the wire.
+        body = to_wire(
+            {
+                "project": "p",
+                "template": "t",
+                "data": {},
+                "version": "1.0.0",
+                "environment": "live",
+                "unexpected": 1,
+            },
+            RENDER_WIRE_FIELDS,
+        )
+        assert body == {"project": "p", "template": "t", "data": {}}
+
+    def test_omits_none_values_instead_of_sending_null(self) -> None:
+        body = to_wire(
+            {"project": "p", "template": "t", "data": {}, "locale": None, "format": None},
+            RENDER_WIRE_FIELDS,
+        )
+        assert body == {"project": "p", "template": "t", "data": {}}
+
+
+class TestWireFields:
+    def test_render_body_has_the_seven_contract_fields(self) -> None:
+        assert set(RENDER_WIRE_FIELDS) == {
+            "project",
+            "template",
+            "data",
+            "metadata",
+            "format",
+            "orientation",
+            "locale",
+        }
+
+    def test_thumbnail_body_has_the_four_option_fields(self) -> None:
+        assert set(THUMBNAIL_WIRE_FIELDS) == {"width", "format", "quality", "pages"}
+
+
+class TestMaskApiKey:
+    @pytest.mark.parametrize(
+        ("key", "masked"),
+        [
+            ("pp_sandbox_0123456789abcdef0123456789abcdef", "pp_sandbox_***"),
+            ("pp_live_0123456789abcdef0123456789abcdef", "pp_live_***"),
+            ("pp_staging-eu_0123456789abcdef0123456789abcdef", "pp_staging-eu_***"),
+        ],
+    )
+    def test_keeps_the_environment_prefix_of_any_environment(self, key: str, masked: str) -> None:
+        assert mask_api_key(key) == masked
+
+    def test_short_key_is_fully_masked(self) -> None:
+        assert mask_api_key("x") == "***"
 
 
 class TestFromWire:
@@ -298,8 +368,8 @@ class TestFromWire:
         assert result == {"metadata": {"OrderId": "o_1", "is_paid": True}}
 
     def test_passes_through_already_snake_case_keys(self) -> None:
-        result = from_wire({"project": "p", "version": "1.0.0"})
-        assert result == {"project": "p", "version": "1.0.0"}
+        result = from_wire({"project": "p", "locale": "en-US"})
+        assert result == {"project": "p", "locale": "en-US"}
 
     def test_empty_dict_returns_empty(self) -> None:
         assert from_wire({}) == {}

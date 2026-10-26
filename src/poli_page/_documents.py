@@ -5,8 +5,9 @@ Three endpoint shapes meet here:
 - Empty in + text/html out + `X-Document-Page-Count` header: `preview`
 - Empty in + no body: `delete`
 
-The thumbnails wire format wraps options under a `thumbnails` key on the
-request body and unwraps `{thumbnails: [...]}` on the response.
+The thumbnails wire format wraps the set options under a `thumbnails` key on
+the request body (`{}` when none is set) and unwraps `{thumbnails: [...]}` on
+the response.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from poli_page._constants import (
     path_document_preview,
     path_document_thumbnails,
 )
-from poli_page._transport import to_wire
+from poli_page._transport import THUMBNAIL_WIRE_FIELDS, to_wire
 from poli_page.types import (
     AsyncDocumentDescriptor,
     DocumentDescriptor,
@@ -69,15 +70,14 @@ class DocumentsSync:
             page_count=_parse_page_count(response.headers.get(HEADER_DOCUMENT_PAGE_COUNT)),
         )
 
-    def thumbnails(self, id: str, options: ThumbnailOptions) -> list[Thumbnail]:
+    def thumbnails(self, id: str, options: ThumbnailOptions | None = None) -> list[Thumbnail]:
         """Generate per-page thumbnails (spec §6.3).
 
-        Request body wraps options as `{thumbnails: <options>}`; response
+        Every option is optional: the request body wraps the set ones as
+        `{thumbnails: <options>}`, or is `{}` when none is set. The response
         unwraps `{thumbnails: [...]}`.
         """
-        opts_dict = cast(dict[str, object], options)
-        timeout = cast("float | None", opts_dict.get("timeout"))
-        body = {"thumbnails": to_wire(opts_dict)}
+        timeout, body = _thumbnails_request(options)
         raw = self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", path_document_thumbnails(id), body=body, idempotency_key=None, timeout=timeout
         )
@@ -85,7 +85,10 @@ class DocumentsSync:
         return [_make_thumbnail(item) for item in items]
 
     def delete(self, id: str) -> None:
-        """Soft-delete a stored document. Re-delete surfaces as 410 GONE."""
+        """Soft-delete a stored document.
+
+        Idempotent: the API answers `204` for an already-deleted document too.
+        """
         self._client._request(  # pyright: ignore[reportPrivateUsage]
             "DELETE", path_document(id), body=None, idempotency_key=None
         )
@@ -121,10 +124,8 @@ class DocumentsAsync:
             page_count=_parse_page_count(response.headers.get(HEADER_DOCUMENT_PAGE_COUNT)),
         )
 
-    async def thumbnails(self, id: str, options: ThumbnailOptions) -> list[Thumbnail]:
-        opts_dict = cast(dict[str, object], options)
-        timeout = cast("float | None", opts_dict.get("timeout"))
-        body = {"thumbnails": to_wire(opts_dict)}
+    async def thumbnails(self, id: str, options: ThumbnailOptions | None = None) -> list[Thumbnail]:
+        timeout, body = _thumbnails_request(options)
         raw = await self._client._request_json(  # pyright: ignore[reportPrivateUsage]
             "POST", path_document_thumbnails(id), body=body, idempotency_key=None, timeout=timeout
         )
@@ -140,6 +141,14 @@ class DocumentsAsync:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+
+def _thumbnails_request(options: ThumbnailOptions | None) -> tuple[float | None, dict[str, Any]]:
+    """Return the per-call timeout and the request body for `thumbnails`."""
+    opts_dict = cast(dict[str, object], options or {})
+    timeout = cast("float | None", opts_dict.get("timeout"))
+    wire = to_wire(opts_dict, THUMBNAIL_WIRE_FIELDS)
+    return timeout, ({"thumbnails": wire} if wire else {})
 
 
 def _parse_page_count(header: str | None) -> int:

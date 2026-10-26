@@ -23,7 +23,6 @@ SAMPLE_RAW_DESCRIPTOR: dict[str, object] = {
     "projectSlug": "p",
     "templateId": "tpl_t",
     "templateSlug": "t",
-    "version": "1.0.0",
     "environment": "sandbox",
     "apiKeyId": "key_x",
     "format": "A4",
@@ -40,7 +39,6 @@ SAMPLE_RAW_DESCRIPTOR: dict[str, object] = {
 PROJECT_MODE_INPUT: dict[str, object] = {
     "project": "billing",
     "template": "invoice",
-    "version": "1.0.0",
     "data": {"name": "Test"},
 }
 
@@ -67,7 +65,7 @@ class TestRenderDocument:
     @respx.mock
     async def test_returns_async_descriptor(self) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             doc = await client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
         assert isinstance(doc, AsyncDocumentDescriptor)
         assert doc.document_id == "doc_default"
@@ -76,7 +74,7 @@ class TestRenderDocument:
     async def test_download_pdf_returns_bytes(self) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             doc = await client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
             pdf = await doc.download_pdf()
         assert pdf.startswith(b"%PDF")
@@ -85,7 +83,7 @@ class TestRenderDocument:
     async def test_download_pdf_non_2xx_raises_download_failed(self) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(403, content=b"Forbidden"))
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             doc = await client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
             with pytest.raises(PoliPageError) as excinfo:
                 await doc.download_pdf()
@@ -96,7 +94,7 @@ class TestRenderDocument:
     async def test_download_pdf_network_error_raises_download_failed(self) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(side_effect=httpx.ConnectError("refused"))
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             doc = await client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
             with pytest.raises(PoliPageError) as excinfo:
                 await doc.download_pdf()
@@ -104,12 +102,12 @@ class TestRenderDocument:
         assert excinfo.value.status is None
 
     @respx.mock
-    async def test_inline_mode_rejected_locally(self) -> None:
+    async def test_missing_project_rejected_locally(self) -> None:
         route = respx.post(f"{TEST_BASE_URL}/v1/render")
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             with pytest.raises(PoliPageError) as excinfo:
                 await client.render.document(
-                    {"template": "<p>x</p>", "data": {}}  # type: ignore[arg-type]
+                    {"template": "invoice", "data": {}}  # type: ignore[arg-type]
                 )
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
         assert not route.called
@@ -122,18 +120,18 @@ class TestRenderPdf:
             return_value=_descriptor_response()
         )
         pdf_route = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             pdf = await client.render.pdf(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
         assert render_route.called
         assert pdf_route.called
         assert pdf.startswith(b"%PDF")
 
     @respx.mock
-    async def test_inline_mode_rejected_locally(self) -> None:
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+    async def test_missing_project_rejected_locally(self) -> None:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             with pytest.raises(PoliPageError) as excinfo:
                 await client.render.pdf(
-                    {"template": "<p>x</p>", "data": {}}  # type: ignore[arg-type]
+                    {"template": "invoice", "data": {}}  # type: ignore[arg-type]
                 )
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
 
@@ -143,7 +141,7 @@ class TestRenderPdf:
             return_value=httpx.Response(500, json={"code": "boom"})
         )
         async with AsyncPoliPage(
-            api_key="pp_test_abc", base_url=TEST_BASE_URL, max_retries=0
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0
         ) as client:
             with pytest.raises(InternalServerError):
                 await client.render.pdf(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
@@ -156,7 +154,7 @@ class TestRenderPdfStream:
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
         chunks: list[bytes] = []
         async with (
-            AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client,
+            AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client,
             client.render.pdf_stream(PROJECT_MODE_INPUT) as stream,  # type: ignore[arg-type]
         ):
             async for chunk in stream:
@@ -165,11 +163,11 @@ class TestRenderPdfStream:
         assert joined.startswith(b"%PDF")
 
     @respx.mock
-    async def test_inline_mode_rejected_at_enter(self) -> None:
+    async def test_missing_project_rejected_at_enter(self) -> None:
         route = respx.post(f"{TEST_BASE_URL}/v1/render")
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             cm = client.render.pdf_stream(
-                {"template": "<p>x</p>", "data": {}}  # type: ignore[arg-type]
+                {"template": "invoice", "data": {}}  # type: ignore[arg-type]
             )
             with pytest.raises(PoliPageError) as excinfo:
                 async with cm:
@@ -181,7 +179,7 @@ class TestRenderPdfStream:
     async def test_non_2xx_from_s3_raises_download_failed(self) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(404, content=b"missing"))
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             with pytest.raises(PoliPageError) as excinfo:
                 async with client.render.pdf_stream(PROJECT_MODE_INPUT) as stream:  # type: ignore[arg-type]
                     async for _ in stream:
@@ -200,7 +198,7 @@ class TestIdempotencyKeyAcrossRetries:
             _descriptor_response(),
         ]
         route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
-        async with AsyncPoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
             await client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
         assert route.call_count == 2
         first = route.calls[0].request.headers["Idempotency-Key"]

@@ -85,8 +85,10 @@ class AsyncPoliPage:
     to release sockets deterministically.
 
     Examples:
-        async with AsyncPoliPage(api_key="pp_test_...") as client:
-            preview = await client.render.preview({"template": "<p>x</p>", "data": {}})
+        async with AsyncPoliPage(api_key="pp_sandbox_...") as client:
+            pdf = await client.render.pdf(
+                {"project": "getting-started", "template": "welcome", "data": {"name": "Ada"}}
+            )
     """
 
     def __init__(

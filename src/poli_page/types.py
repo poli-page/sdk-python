@@ -39,7 +39,13 @@ PageFormat = Literal[
 
 Orientation = Literal["portrait", "landscape"]
 
-Environment = Literal["sandbox", "live"]
+Environment = str
+"""Name of the environment a document was rendered in, as the API returns it.
+
+Any name an organization creates (`sandbox`, `live`, `staging`, ...); the SDK
+passes it through unchanged. A key carries its environment (`pp_{env}_...`),
+so the SDK never sends one.
+"""
 
 # ---------------------------------------------------------------------------
 # Render inputs (plan §9.1)
@@ -49,7 +55,18 @@ RenderMetadata = Mapping[str, str | int | float | bool]
 """Free-form caller metadata. Primitives only — no nested objects or arrays."""
 
 
-class _BaseRenderInput(TypedDict, total=False):
+class RenderInput(TypedDict, total=False):
+    """Render a stored project + template by slug.
+
+    The render uses the project's copy published in the API key's environment.
+    Only `project`, `template`, `data`, `metadata`, `format`, `orientation` and
+    `locale` reach the request body; any other key is dropped.
+    `idempotency_key` becomes the `Idempotency-Key` header and `timeout` is a
+    per-call deadline.
+    """
+
+    project: Required[str]
+    template: Required[str]
     data: Required[Mapping[str, Any]]
     format: NotRequired[PageFormat]
     orientation: NotRequired[Orientation]
@@ -59,43 +76,16 @@ class _BaseRenderInput(TypedDict, total=False):
     timeout: NotRequired[float]
 
 
-class ProjectModeInput(_BaseRenderInput, total=False):
-    """Render against a stored project + template by slug."""
-
-    project: Required[str]
-    template: Required[str]
-    version: NotRequired[str]
-
-
-class InlineModeInput(_BaseRenderInput, total=False):
-    """Render with raw HTML inline. No project resolution."""
-
-    template: Required[str]
-
-
-RenderInput = ProjectModeInput | InlineModeInput
-
 # ---------------------------------------------------------------------------
 # Render outputs
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
-class PreviewResult:
-    """Result of `client.render.preview(input)` (spec §5.3)."""
-
-    html: str
-    total_pages: int
-    environment: Environment
-
-
-@dataclass(frozen=True, slots=True)
 class DocumentPreviewResult:
     """Result of `client.documents.preview(id)` (spec §6.2).
 
-    Note: the field is `page_count` (singular), not `total_pages` as in
-    `render.preview`'s `PreviewResult`. The deployed API uses different
-    field names for the two endpoints — the SDK does not paper over it.
+    The stored HTML of a rendered document and its page count.
     """
 
     html: str
@@ -115,12 +105,19 @@ class Thumbnail:
 
 
 class ThumbnailOptions(TypedDict, total=False):
-    """Options for `client.documents.thumbnails(id, options)` (spec §6.3)."""
+    """Options for `client.documents.thumbnails(id, options)` (spec §6.3).
 
-    width: Required[int]
-    format: NotRequired[Literal["png", "jpeg"]]
+    Every option is optional and an unset one is not sent; the API applies its
+    defaults (width 400, `jpeg`) and checks the bounds (400 `VALIDATION_ERROR`).
+    """
+
+    width: NotRequired[int]
+    """Thumbnail width in pixels, 50-2000."""
+    format: NotRequired[Literal["jpeg", "webp", "png"]]
     quality: NotRequired[int]
+    """Image quality 1-100, `jpeg` only."""
     pages: NotRequired[list[int]]
+    """Generate only these pages (1-based)."""
 
 
 @dataclass(slots=True, kw_only=True)
@@ -137,7 +134,6 @@ class _DocumentDescriptorBase:
     project_slug: str | None
     template_id: str | None
     template_slug: str | None
-    version: str | None
     environment: Environment
     api_key_id: str | None
     format: PageFormat

@@ -32,7 +32,6 @@ SAMPLE_RAW_DESCRIPTOR: dict[str, object] = {
     "projectSlug": "p",
     "templateId": "tpl_t",
     "templateSlug": "t",
-    "version": "1.0.0",
     "environment": "sandbox",
     "apiKeyId": "key_x",
     "format": "A4",
@@ -54,7 +53,7 @@ def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def client() -> PoliPage:
-    return PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+    return PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
 
 
 def _descriptor_response(overrides: dict[str, object] | None = None) -> httpx.Response:
@@ -73,7 +72,6 @@ def _pdf_response() -> httpx.Response:
 PROJECT_MODE_INPUT: dict[str, object] = {
     "project": "billing",
     "template": "invoice",
-    "version": "1.0.0",
     "data": {"name": "Test"},
 }
 
@@ -96,7 +94,6 @@ class TestRenderDocument:
         assert doc.project_slug == "p"
         assert doc.template_id == "tpl_t"
         assert doc.template_slug == "t"
-        assert doc.version == "1.0.0"
         assert doc.environment == "sandbox"
         assert doc.api_key_id == "key_x"
         assert doc.format == "A4"
@@ -108,6 +105,27 @@ class TestRenderDocument:
         assert doc.metadata == {}
         assert doc.presigned_pdf_url == PRESIGNED_URL
         assert doc.expires_at == "2026-01-01T00:15:00Z"
+
+    @respx.mock
+    def test_descriptor_environment_is_any_name_the_api_returns(self, client: PoliPage) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=_descriptor_response({"environment": "staging"})
+        )
+        doc = client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        assert doc.environment == "staging"
+
+    def test_descriptor_has_no_version_field(self) -> None:
+        from dataclasses import fields
+
+        assert "version" not in {f.name for f in fields(DocumentDescriptor)}
+
+    @respx.mock
+    def test_descriptor_ignores_a_version_key_on_the_wire(self, client: PoliPage) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=_descriptor_response({"version": "1.0.0"})
+        )
+        doc = client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        assert not hasattr(doc, "version")
 
     @respx.mock
     def test_descriptor_metadata_echoed_verbatim(self, client: PoliPage) -> None:
@@ -168,11 +186,11 @@ class TestRenderDocument:
         assert excinfo.value.status is None
 
     @respx.mock
-    def test_inline_mode_input_rejected_locally(self, client: PoliPage) -> None:
+    def test_missing_project_rejected_locally(self, client: PoliPage) -> None:
         # No HTTP call should be made — validation happens client-side.
         route = respx.post(f"{TEST_BASE_URL}/v1/render")
         with pytest.raises(PoliPageError) as excinfo:
-            client.render.document({"template": "<p>x</p>", "data": {}})  # type: ignore[arg-type]
+            client.render.document({"template": "invoice", "data": {}})  # type: ignore[arg-type]
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
         assert excinfo.value.status is None
         assert not route.called
@@ -192,10 +210,10 @@ class TestRenderPdf:
         assert pdf.startswith(b"%PDF")
 
     @respx.mock
-    def test_inline_mode_input_rejected_locally(self, client: PoliPage) -> None:
+    def test_missing_project_rejected_locally(self, client: PoliPage) -> None:
         route = respx.post(f"{TEST_BASE_URL}/v1/render")
         with pytest.raises(PoliPageError) as excinfo:
-            client.render.pdf({"template": "<p>x</p>", "data": {}})  # type: ignore[arg-type]
+            client.render.pdf({"template": "invoice", "data": {}})  # type: ignore[arg-type]
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
         assert not route.called
 
@@ -221,11 +239,11 @@ class TestRenderPdfStream:
         assert joined.startswith(b"%PDF")
 
     @respx.mock
-    def test_inline_mode_input_rejected_locally(self, client: PoliPage) -> None:
+    def test_missing_project_rejected_locally(self, client: PoliPage) -> None:
         # Validation happens at pdf_stream() call time, before the CM is built.
         route = respx.post(f"{TEST_BASE_URL}/v1/render")
         with pytest.raises(PoliPageError) as excinfo:
-            client.render.pdf_stream({"template": "<p>x</p>", "data": {}})  # type: ignore[arg-type]
+            client.render.pdf_stream({"template": "invoice", "data": {}})  # type: ignore[arg-type]
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
         assert not route.called
 
@@ -259,7 +277,7 @@ class TestRenderPdfStream:
 
 class TestRequestBody:
     @respx.mock
-    def test_render_document_sends_project_template_version_data(self, client: PoliPage) -> None:
+    def test_render_document_sends_project_template_data(self, client: PoliPage) -> None:
         import json
 
         route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
@@ -267,7 +285,6 @@ class TestRequestBody:
             {
                 "project": "billing",
                 "template": "invoice",
-                "version": "1.0.0",
                 "data": {"amount": 100},
                 "format": "A5",
                 "orientation": "landscape",
@@ -276,7 +293,7 @@ class TestRequestBody:
         body = json.loads(route.calls.last.request.read())
         assert body["project"] == "billing"
         assert body["template"] == "invoice"
-        assert body["version"] == "1.0.0"
+        assert "version" not in body
         assert body["data"] == {"amount": 100}
         assert body["format"] == "A5"
         assert body["orientation"] == "landscape"
@@ -338,3 +355,49 @@ class TestIdempotencyKeyAcrossRetries:
         assert route.call_count == 2
         assert route.calls[0].request.headers["Idempotency-Key"] == "caller-key-7"
         assert route.calls[1].request.headers["Idempotency-Key"] == "caller-key-7"
+
+
+class TestPublicSurface:
+    """Versions, the authenticated preview and inline HTML are gone from the API."""
+
+    def test_render_has_no_preview(self, client: PoliPage) -> None:
+        assert not hasattr(client.render, "preview")
+
+    def test_async_render_has_no_preview(self) -> None:
+        from poli_page import AsyncPoliPage
+
+        assert not hasattr(AsyncPoliPage(api_key="pp_sandbox_abc").render, "preview")
+
+    def test_documents_preview_stays(self, client: PoliPage) -> None:
+        assert callable(client.documents.preview)
+
+    @pytest.mark.parametrize("name", ["PreviewResult", "InlineModeInput", "ProjectModeInput"])
+    def test_removed_types_not_exported(self, name: str) -> None:
+        import poli_page
+        import poli_page.types
+
+        assert not hasattr(poli_page, name)
+        assert not hasattr(poli_page.types, name)
+        assert name not in poli_page.__all__
+
+    def test_render_input_is_exported(self) -> None:
+        import poli_page
+
+        assert "RenderInput" in poli_page.__all__
+        keys = poli_page.RenderInput.__required_keys__ | poli_page.RenderInput.__optional_keys__
+        assert keys == {
+            "project",
+            "template",
+            "data",
+            "metadata",
+            "format",
+            "orientation",
+            "locale",
+            "idempotency_key",
+            "timeout",
+        }
+
+    def test_render_preview_path_removed(self) -> None:
+        from poli_page import _constants
+
+        assert not hasattr(_constants, "PATH_RENDER_PREVIEW")

@@ -1,4 +1,5 @@
 # Demonstrates: client.documents.thumbnails(id, options) — page thumbnails for a stored document.
+# Every option is optional: client.documents.thumbnails(id) uses the API defaults (400 px, jpeg).
 from poli_page import PoliPage
 
 client = PoliPage()

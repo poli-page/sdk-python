@@ -19,12 +19,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from poli_page._async_client import AsyncPoliPage
     from poli_page._client import PoliPage
-    from poli_page.types import ProjectModeInput
+    from poli_page.types import RenderInput
 
 
 def render_to_file(
     client: PoliPage,
-    input: ProjectModeInput,
+    input: RenderInput,
     path: str | os.PathLike[str],
 ) -> None:
     """Render a PDF and write it to disk (sync).
@@ -33,7 +33,7 @@ def render_to_file(
     regardless of document size. Creates parent directories and
     overwrites any existing file at `path`.
 
-    Project mode only; inline-shaped input surfaces as
+    Input without a `project` surfaces as
     `PoliPageError(code='PROJECT_REQUIRED_FOR_DOCUMENT')`.
     """
     out = Path(path)
@@ -45,7 +45,7 @@ def render_to_file(
 
 async def async_render_to_file(
     client: AsyncPoliPage,
-    input: ProjectModeInput,
+    input: RenderInput,
     path: str | os.PathLike[str],
 ) -> None:
     """Render a PDF and write it to disk (async).

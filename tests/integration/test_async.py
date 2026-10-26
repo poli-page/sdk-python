@@ -1,8 +1,8 @@
 """Live-API integration test: full async round-trip.
 
-Exercises the async surface end-to-end: preview (inline), pdf (project),
-document.download_pdf, pdf_stream, documents.get, documents.preview,
-documents.thumbnails (tier-aware), documents.delete, and the 410-GONE re-get.
+Exercises the async surface end-to-end: pdf, document.download_pdf,
+pdf_stream, documents.get, documents.preview, documents.thumbnails
+(tier-aware), documents.delete (idempotent), and the 410 DOCUMENT_GONE re-get.
 """
 
 from __future__ import annotations
@@ -14,28 +14,17 @@ from poli_page import AsyncPoliPage, PoliPageError
 pytestmark = pytest.mark.integration
 
 
-async def test_async_preview_inline(api_key: str, base_url: str) -> None:
-    async with AsyncPoliPage(api_key=api_key, base_url=base_url) as client:
-        result = await client.render.preview(
-            {"template": "<p>{{ name }}</p>", "data": {"name": "Async"}}
-        )
-    assert len(result.html) > 0
-    assert result.environment in ("sandbox", "live")
-
-
 async def test_async_pdf_magic_bytes(
     api_key: str,
     base_url: str,
     test_project: str,
     test_template: str,
-    test_version: str,
 ) -> None:
     async with AsyncPoliPage(api_key=api_key, base_url=base_url) as client:
         pdf = await client.render.pdf(
             {
                 "project": test_project,
                 "template": test_template,
-                "version": test_version,
                 "data": {"name": "Async PDF"},
             }
         )
@@ -48,7 +37,6 @@ async def test_async_pdf_stream(
     base_url: str,
     test_project: str,
     test_template: str,
-    test_version: str,
 ) -> None:
     chunks: list[bytes] = []
     async with (
@@ -57,7 +45,6 @@ async def test_async_pdf_stream(
             {
                 "project": test_project,
                 "template": test_template,
-                "version": test_version,
                 "data": {"name": "Async Stream"},
             }
         ) as stream,
@@ -74,14 +61,12 @@ async def test_async_documents_round_trip(
     base_url: str,
     test_project: str,
     test_template: str,
-    test_version: str,
 ) -> None:
     async with AsyncPoliPage(api_key=api_key, base_url=base_url) as client:
         created = await client.render.document(
             {
                 "project": test_project,
                 "template": test_template,
-                "version": test_version,
                 "data": {"id": "async-round-trip"},
                 "metadata": {"source": "sdk-python async integration"},
             }
@@ -111,8 +96,10 @@ async def test_async_documents_round_trip(
         assert isinstance(preview.html, str)
 
         await client.documents.delete(created.document_id)
+        # Deletes are idempotent: a re-delete resolves too.
+        await client.documents.delete(created.document_id)
 
         with pytest.raises(PoliPageError) as excinfo:
             await client.documents.get(created.document_id)
         assert excinfo.value.status == 410
-        assert excinfo.value.code in ("GONE", "DOCUMENT_GONE")
+        assert excinfo.value.code == "DOCUMENT_GONE"

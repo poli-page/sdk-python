@@ -27,10 +27,19 @@ from poli_page._constants import (
 
 HttpMethod = Literal["GET", "POST", "DELETE"]
 
-# Fields the SDK accepts at the top of an input dict but that must not reach
-# the wire body. `idempotency_key` is promoted to the `Idempotency-Key` header;
-# `timeout` is SDK-only (per-call deadline).
-_NON_WIRE_FIELDS: frozenset[str] = frozenset({"idempotency_key", "timeout"})
+# The only input keys that reach a request body. Anything else a caller puts in
+# the dict (`idempotency_key`, `timeout`, or a stray `version` / `environment`
+# the API would reject with 400 VALIDATION_ERROR) stays client-side.
+RENDER_WIRE_FIELDS: tuple[str, ...] = (
+    "project",
+    "template",
+    "data",
+    "metadata",
+    "format",
+    "orientation",
+    "locale",
+)
+THUMBNAIL_WIRE_FIELDS: tuple[str, ...] = ("width", "format", "quality", "pages")
 
 
 # ---------------------------------------------------------------------------
@@ -63,8 +72,9 @@ def build_headers(
 
 # ---------------------------------------------------------------------------
 # API key masking — only ever called for human-readable output (repr, logs).
-# Preserves the env prefix (pp_test_ / pp_live_) so operators can tell which
-# environment a client points at, then truncates the secret portion.
+# Preserves the `pp_{env}_` prefix so operators can tell which environment a
+# client points at, then truncates the secret portion. Environment names never
+# contain `_`, so the second segment is always the whole environment name.
 # ---------------------------------------------------------------------------
 
 
@@ -72,8 +82,8 @@ def mask_api_key(api_key: str) -> str:
     """Return a non-reversible, human-recognisable rendering of `api_key`.
 
     Keeps the first two underscore-separated segments when present (so
-    `pp_test_secret` → `pp_test_***`), or falls back to `***` for very short
-    or non-prefixed keys.
+    `pp_sandbox_secret` → `pp_sandbox_***`), or falls back to `***` for very
+    short or non-prefixed keys.
     """
     parts = api_key.split("_", 2)
     if len(parts) >= 2 and parts[0] and parts[1]:
@@ -165,18 +175,19 @@ def _internal_error(status: int) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def to_wire(input_dict: Mapping[str, Any]) -> dict[str, Any]:
+def to_wire(input_dict: Mapping[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
     """Translate an SDK input dict into a wire-shaped body.
 
-    Top-level only: strips `idempotency_key` and `timeout`, converts remaining
-    top-level snake_case keys to camelCase. Values pass through unchanged —
-    `data` and `metadata` reach the wire with user-supplied keys intact.
+    Keeps only the top-level keys listed in `fields` and converts them from
+    snake_case to camelCase. A key that is absent or `None` is omitted, never
+    sent as `null`. Values pass through unchanged — `data` and `metadata`
+    reach the wire with user-supplied keys intact.
     """
     out: dict[str, Any] = {}
-    for key, value in input_dict.items():
-        if key in _NON_WIRE_FIELDS:
-            continue
-        out[_snake_to_camel(key)] = value
+    for key in fields:
+        value = input_dict.get(key)
+        if value is not None:
+            out[_snake_to_camel(key)] = value
     return out
 
 

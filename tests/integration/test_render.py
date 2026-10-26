@@ -13,14 +13,11 @@ from poli_page import PoliPage, PoliPageError
 pytestmark = pytest.mark.integration
 
 
-def test_pdf_returns_magic_bytes(
-    client: PoliPage, test_project: str, test_template: str, test_version: str
-) -> None:
+def test_pdf_returns_magic_bytes(client: PoliPage, test_project: str, test_template: str) -> None:
     pdf = client.render.pdf(
         {
             "project": test_project,
             "template": test_template,
-            "version": test_version,
             "data": {"name": "Integration Test"},
         }
     )
@@ -30,13 +27,12 @@ def test_pdf_returns_magic_bytes(
 
 
 def test_document_stores_and_downloads(
-    client: PoliPage, test_project: str, test_template: str, test_version: str
+    client: PoliPage, test_project: str, test_template: str
 ) -> None:
     doc = client.render.document(
         {
             "project": test_project,
             "template": test_template,
-            "version": test_version,
             "data": {"name": "render.document"},
             "metadata": {"source": "sdk-python integration test"},
         }
@@ -51,15 +47,12 @@ def test_document_stores_and_downloads(
     assert pdf[:4] == b"%PDF"
 
 
-def test_pdf_stream_yields_bytes(
-    client: PoliPage, test_project: str, test_template: str, test_version: str
-) -> None:
+def test_pdf_stream_yields_bytes(client: PoliPage, test_project: str, test_template: str) -> None:
     chunks: list[bytes] = []
     with client.render.pdf_stream(
         {
             "project": test_project,
             "template": test_template,
-            "version": test_version,
             "data": {"name": "pdf_stream"},
         }
     ) as stream:
@@ -75,14 +68,13 @@ def test_bad_api_key_raises_authentication_error(
     base_url: str,
     test_project: str,
     test_template: str,
-    test_version: str,
 ) -> None:
     # Why: depend on `api_key` so the conftest's skip gate kicks in when
     # POLI_PAGE_API_KEY is unset, even though this test uses a deliberately
     # invalid key to exercise the 401 path.
     del api_key
     client = PoliPage(
-        api_key="pp_test_invalid_xxx_definitely_not_real",
+        api_key="pp_sandbox_00000000000000000000000000000000",
         base_url=base_url,
         max_retries=0,
     )
@@ -92,7 +84,6 @@ def test_bad_api_key_raises_authentication_error(
                 {
                     "project": test_project,
                     "template": test_template,
-                    "version": test_version,
                     "data": {},
                 }
             )
