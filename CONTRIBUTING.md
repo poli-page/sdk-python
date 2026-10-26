@@ -70,12 +70,13 @@ Integration tests hit the live API. They're gated on `POLI_PAGE_API_KEY`
 and skipped when the env var is unset:
 
 ```bash
-export POLI_PAGE_API_KEY=pp_test_...
+export POLI_PAGE_API_KEY=pp_sandbox_...
 pytest tests/integration/ -m integration
 ```
 
 The full set of integration tests round-trips every public method against
-the auto-provisioned `getting-started/welcome/1.0.0` template.
+the `getting-started` project's `welcome` template, provisioned in every
+organization's sandbox.
 
 ## Releasing
 

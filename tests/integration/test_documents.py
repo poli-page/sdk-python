@@ -4,8 +4,8 @@ Port of sdk-node/tests/integration/documents.integration.test.ts.
 
 Renders a document, fetches its descriptor, downloads the PDF, generates
 thumbnails (tolerating tier-gated `THUMBNAILS_NOT_AVAILABLE` on Free),
-reads the stored HTML preview, deletes, then verifies a subsequent get
-raises 410 GONE.
+reads the stored HTML preview, deletes twice (deletes are idempotent), then
+verifies a subsequent get raises 410 DOCUMENT_GONE.
 """
 
 from __future__ import annotations
@@ -17,15 +17,12 @@ from poli_page import PoliPage, PoliPageError
 pytestmark = pytest.mark.integration
 
 
-def test_documents_round_trip(
-    client: PoliPage, test_project: str, test_template: str, test_version: str
-) -> None:
+def test_documents_round_trip(client: PoliPage, test_project: str, test_template: str) -> None:
     # 1. Render and store a document.
     created = client.render.document(
         {
             "project": test_project,
             "template": test_template,
-            "version": test_version,
             "data": {"id": "round-trip"},
             "metadata": {"source": "sdk-python integration test"},
         }
@@ -58,13 +55,12 @@ def test_documents_round_trip(
     assert preview.page_count > 0
     assert isinstance(preview.html, str)
 
-    # 6. Soft-delete.
+    # 6. Soft-delete; a re-delete resolves too.
+    client.documents.delete(created.document_id)
     client.documents.delete(created.document_id)
 
-    # 7. Subsequent get returns 410 GONE.
+    # 7. Subsequent get returns 410 DOCUMENT_GONE.
     with pytest.raises(PoliPageError) as excinfo:
         client.documents.get(created.document_id)
     assert excinfo.value.status == 410
-    # The deployed API may emit 'GONE' or 'DOCUMENT_GONE' depending on
-    # API version — accept either.
-    assert excinfo.value.code in ("GONE", "DOCUMENT_GONE")
+    assert excinfo.value.code == "DOCUMENT_GONE"

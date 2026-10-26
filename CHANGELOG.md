@@ -8,6 +8,50 @@ Breaking changes between major versions are summarized in [MIGRATION.md](MIGRATI
 
 ## [Unreleased]
 
+Environments contract: a key carries its environment (`pp_{env}_…`), versions and the
+authenticated preview are gone. Breaking, with no deprecation window.
+
+### Removed
+
+- **`render.preview`** (sync and async) and its **`PreviewResult`** type: the API removed
+  `POST /v1/render/preview` (it now answers `404`). `documents.preview(id)` stays.
+- **Inline-HTML rendering** and the **`InlineModeInput`** type: the API answers an inline
+  `template` with `400 VALIDATION_ERROR`.
+- The **`version`** render input field and the **`version`** field of `DocumentDescriptor` /
+  `AsyncDocumentDescriptor`: a render uses the project's copy published in the key's
+  environment.
+- Error-code constants `VERSION_NOT_FOUND`, `INVALID_VERSION_FORMAT`, `VERSION_REQUIRED`,
+  `INVALID_VERSION_FOR_KEY_ENV`, `MISSING_PROJECT_OR_TEMPLATE`, `GONE` (the API answers
+  `410 DOCUMENT_GONE`) and `PAYMENT_REQUIRED` (payment grace is
+  `403 ORGANIZATION_PAYMENT_GRACE`).
+
+### Changed
+
+- **`ProjectModeInput` is renamed `RenderInput`** and is the only render input type.
+- The render body is built from `project`, `template`, `data`, `metadata`, `format`,
+  `orientation` and `locale` only: any other key in the input dict (such as `version` or
+  `environment`) is no longer sent, and an unset or `None` field is omitted, not sent as `null`.
+- **`Environment`** is now `str`: `DocumentDescriptor.environment` is any environment name the
+  API returns (`sandbox`, `live`, `staging`, …), passed through unchanged.
+- **`documents.thumbnails(id, options=None)`**: every `ThumbnailOptions` key is optional
+  (`width` is no longer required), `format` accepts `"webp"` besides `"jpeg"` and `"png"`,
+  and with no option set the request body is `{}` (the API defaults to 400 px `jpeg`).
+  Only `width`, `format`, `quality` and `pages` are sent.
+- `documents.delete` is documented as idempotent: the API answers `204` for an
+  already-deleted document.
+- Docstrings use `pp_sandbox_…` keys; `pp_test_…` keys no longer exist.
+
+### Added
+
+- Error-code constants `PUBLISH_IN_PROGRESS`, `ENVIRONMENT_MISMATCH`,
+  `PROJECT_NOT_IN_ENVIRONMENT`, `TEMPLATE_NOT_FOUND`, `DOCUMENT_GONE`, `ENVIRONMENT_PROTECTED`,
+  `ORGANIZATION_PAYMENT_GRACE`, `EMPTY_DOCUMENT`, `STORAGE_ACCESS_DENIED`,
+  `ORGANIZATION_MIGRATING`, `PROJECT_NOT_FOUND`, `TEMPLATE_ERROR`, `THUMBNAILS_NOT_AVAILABLE`,
+  `RATE_LIMIT_EXCEEDED`, `RENDER_BODY_TOO_LARGE`, `DOCUMENT_TOO_LARGE` and `RENDER_TIMEOUT`.
+  An error code the SDK does not list still reaches `err.code` verbatim.
+- A render that meets a publish in progress (`503 PUBLISH_IN_PROGRESS` with `Retry-After`) is
+  retried by the existing policy, then surfaces with that code.
+
 ## [0.9.0] - 2026-06-19
 
 First public release (pre-1.0). Behavior parity with `@poli-page/sdk@1.0.0` (Node).

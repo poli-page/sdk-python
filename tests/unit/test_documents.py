@@ -14,6 +14,7 @@ import pytest
 import respx
 
 from poli_page import (
+    BadRequestError,
     DocumentDescriptor,
     DocumentPreviewResult,
     GoneError,
@@ -32,7 +33,6 @@ SAMPLE_RAW_DESCRIPTOR: dict[str, object] = {
     "projectSlug": "billing",
     "templateId": "tpl_invoice_v1",
     "templateSlug": "invoice",
-    "version": "1.0.0",
     "environment": "live",
     "apiKeyId": "key_live_abc",
     "format": "A4",
@@ -62,7 +62,7 @@ def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def client() -> PoliPage:
-    return PoliPage(api_key="pp_test_abc", base_url=TEST_BASE_URL)
+    return PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL)
 
 
 class TestDocumentsGet:
@@ -126,11 +126,12 @@ class TestDocumentsGet:
     @respx.mock
     def test_410_raises_gone_error(self, client: PoliPage) -> None:
         respx.get(f"{TEST_BASE_URL}/v1/documents/deleted").mock(
-            return_value=httpx.Response(410, json={"code": "GONE"})
+            return_value=httpx.Response(410, json={"error": "DOCUMENT_GONE"})
         )
         with pytest.raises(GoneError) as excinfo:
             client.documents.get("deleted")
         assert excinfo.value.status == 410
+        assert excinfo.value.code == "DOCUMENT_GONE"
 
 
 class TestDocumentsPreview:
@@ -239,6 +240,55 @@ class TestDocumentsThumbnails:
         }
 
     @respx.mock
+    def test_no_options_sends_empty_body(self, client: PoliPage) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/documents/doc_abc123/thumbnails").mock(
+            return_value=httpx.Response(200, json={"thumbnails": [SAMPLE_THUMBNAIL]})
+        )
+        thumbs = client.documents.thumbnails("doc_abc123")
+        assert json.loads(route.calls.last.request.read()) == {}
+        assert len(thumbs) == 1
+
+    @respx.mock
+    def test_empty_options_send_empty_body(self, client: PoliPage) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/documents/doc_abc123/thumbnails").mock(
+            return_value=httpx.Response(200, json={"thumbnails": []})
+        )
+        client.documents.thumbnails("doc_abc123", {})
+        assert json.loads(route.calls.last.request.read()) == {}
+
+    @respx.mock
+    def test_webp_format_accepted(self, client: PoliPage) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/documents/doc_abc123/thumbnails").mock(
+            return_value=httpx.Response(200, json={"thumbnails": []})
+        )
+        client.documents.thumbnails("doc_abc123", {"format": "webp"})
+        assert json.loads(route.calls.last.request.read()) == {"thumbnails": {"format": "webp"}}
+
+    @respx.mock
+    def test_out_of_range_options_are_not_checked_client_side(self, client: PoliPage) -> None:
+        # Bounds belong to the API (400 VALIDATION_ERROR); the SDK forwards as-is.
+        route = respx.post(f"{TEST_BASE_URL}/v1/documents/doc_abc123/thumbnails").mock(
+            return_value=httpx.Response(400, json={"error": "VALIDATION_ERROR"})
+        )
+        with pytest.raises(BadRequestError) as excinfo:
+            client.documents.thumbnails("doc_abc123", {"width": 5000, "quality": 0})
+        assert excinfo.value.code == "VALIDATION_ERROR"
+        assert json.loads(route.calls.last.request.read()) == {
+            "thumbnails": {"width": 5000, "quality": 0}
+        }
+
+    @respx.mock
+    def test_unknown_option_keys_and_timeout_are_not_sent(self, client: PoliPage) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/documents/doc_abc123/thumbnails").mock(
+            return_value=httpx.Response(200, json={"thumbnails": []})
+        )
+        client.documents.thumbnails(
+            "doc_abc123",
+            {"width": 100, "timeout": 5.0, "height": 9},  # type: ignore[typeddict-unknown-key]
+        )
+        assert json.loads(route.calls.last.request.read()) == {"thumbnails": {"width": 100}}
+
+    @respx.mock
     def test_unwraps_response_and_returns_list(self, client: PoliPage) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/documents/doc_abc123/thumbnails").mock(
             return_value=httpx.Response(
@@ -310,9 +360,23 @@ class TestDocumentsDelete:
         assert route.called
 
     @respx.mock
-    def test_410_on_redelete_raises_gone_error(self, client: PoliPage) -> None:
-        respx.delete(f"{TEST_BASE_URL}/v1/documents/already_gone").mock(
-            return_value=httpx.Response(410, json={"code": "GONE"})
+    def test_redelete_resolves_on_204(self, client: PoliPage) -> None:
+        # Deletes are idempotent: the API answers 204 for an already-deleted document.
+        route = respx.delete(f"{TEST_BASE_URL}/v1/documents/doc_abc123").mock(
+            return_value=httpx.Response(204)
         )
-        with pytest.raises(GoneError):
-            client.documents.delete("already_gone")
+        first = client.documents.delete("doc_abc123")
+        second = client.documents.delete("doc_abc123")
+        assert first is None
+        assert second is None
+        assert route.call_count == 2
+
+    @respx.mock
+    def test_404_raises_not_found_error(self, client: PoliPage) -> None:
+        respx.delete(f"{TEST_BASE_URL}/v1/documents/missing").mock(
+            return_value=httpx.Response(404, json={"error": "DOCUMENT_NOT_FOUND"})
+        )
+        with pytest.raises(NotFoundError) as excinfo:
+            client.documents.delete("missing")
+        assert excinfo.value.status == 404
+        assert excinfo.value.code == "DOCUMENT_NOT_FOUND"

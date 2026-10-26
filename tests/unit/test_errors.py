@@ -200,29 +200,73 @@ class TestClassify:
 
 
 class TestErrorCodes:
+    # The 31 API codes of the environments contract, each exposed as a constant
+    # whose value is its own name.
+    API_CODES: frozenset[str] = frozenset(
+        {
+            # Kept.
+            "MISSING_API_KEY",
+            "INVALID_API_KEY",
+            "ORGANIZATION_CANCELLED",
+            "ORGANIZATION_PURGED",
+            "FORBIDDEN",
+            "VALIDATION_ERROR",
+            "MISSING_DATA",
+            "MISSING_TEMPLATE_SLUG",
+            "PROJECT_REQUIRED_FOR_DOCUMENT",
+            "NOT_FOUND",
+            "DOCUMENT_NOT_FOUND",
+            "QUOTA_EXCEEDED",
+            "OVERAGE_CAP_EXCEEDED",
+            "INTERNAL_ERROR",
+            # Added with environments.
+            "PUBLISH_IN_PROGRESS",
+            "ENVIRONMENT_MISMATCH",
+            "PROJECT_NOT_IN_ENVIRONMENT",
+            "TEMPLATE_NOT_FOUND",
+            "DOCUMENT_GONE",
+            "ENVIRONMENT_PROTECTED",
+            "ORGANIZATION_PAYMENT_GRACE",
+            "EMPTY_DOCUMENT",
+            "STORAGE_ACCESS_DENIED",
+            "ORGANIZATION_MIGRATING",
+            "PROJECT_NOT_FOUND",
+            "TEMPLATE_ERROR",
+            "THUMBNAILS_NOT_AVAILABLE",
+            "RATE_LIMIT_EXCEEDED",
+            "RENDER_BODY_TOO_LARGE",
+            "DOCUMENT_TOO_LARGE",
+            "RENDER_TIMEOUT",
+        }
+    )
+
     def test_known_api_codes_exposed(self) -> None:
-        # spec §7.2 / plan §7.4 — pass-through codes the SDK ships as constants.
-        assert error_codes.MISSING_API_KEY == "MISSING_API_KEY"
-        assert error_codes.INVALID_API_KEY == "INVALID_API_KEY"
-        assert error_codes.PAYMENT_REQUIRED == "PAYMENT_REQUIRED"
-        assert error_codes.FORBIDDEN == "FORBIDDEN"
-        assert error_codes.ORGANIZATION_CANCELLED == "ORGANIZATION_CANCELLED"
-        assert error_codes.ORGANIZATION_PURGED == "ORGANIZATION_PURGED"
-        assert error_codes.NOT_FOUND == "NOT_FOUND"
-        assert error_codes.VERSION_NOT_FOUND == "VERSION_NOT_FOUND"
-        assert error_codes.DOCUMENT_NOT_FOUND == "DOCUMENT_NOT_FOUND"
-        assert error_codes.GONE == "GONE"
-        assert error_codes.VALIDATION_ERROR == "VALIDATION_ERROR"
-        assert error_codes.MISSING_DATA == "MISSING_DATA"
-        assert error_codes.MISSING_PROJECT_OR_TEMPLATE == "MISSING_PROJECT_OR_TEMPLATE"
-        assert error_codes.MISSING_TEMPLATE_SLUG == "MISSING_TEMPLATE_SLUG"
-        assert error_codes.PROJECT_REQUIRED_FOR_DOCUMENT == "PROJECT_REQUIRED_FOR_DOCUMENT"
-        assert error_codes.INVALID_VERSION_FORMAT == "INVALID_VERSION_FORMAT"
-        assert error_codes.VERSION_REQUIRED == "VERSION_REQUIRED"
-        assert error_codes.INVALID_VERSION_FOR_KEY_ENV == "INVALID_VERSION_FOR_KEY_ENV"
-        assert error_codes.QUOTA_EXCEEDED == "QUOTA_EXCEEDED"
-        assert error_codes.OVERAGE_CAP_EXCEEDED == "OVERAGE_CAP_EXCEEDED"
-        assert error_codes.INTERNAL_ERROR == "INTERNAL_ERROR"
+        assert len(self.API_CODES) == 31
+        for code in self.API_CODES:
+            assert getattr(error_codes, code) == code
+
+    def test_known_api_codes_are_exactly_the_contract_codes(self) -> None:
+        exposed = {
+            name
+            for name, value in vars(error_codes).items()
+            if name.isupper() and isinstance(value, str) and value == name
+        }
+        assert exposed - {"DOWNLOAD_FAILED"} == self.API_CODES
+
+    @pytest.mark.parametrize(
+        "removed",
+        [
+            "VERSION_NOT_FOUND",
+            "INVALID_VERSION_FORMAT",
+            "VERSION_REQUIRED",
+            "INVALID_VERSION_FOR_KEY_ENV",
+            "MISSING_PROJECT_OR_TEMPLATE",
+            "GONE",
+            "PAYMENT_REQUIRED",
+        ],
+    )
+    def test_removed_codes_not_exposed(self, removed: str) -> None:
+        assert not hasattr(error_codes, removed)
 
     def test_reserved_sdk_codes_exposed(self) -> None:
         # plan §7.2 — SDK-internal codes also live as constants.

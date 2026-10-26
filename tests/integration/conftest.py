@@ -3,7 +3,8 @@
 Env-var conventions shared across SDKs so the same CI secrets drive them all:
 - POLI_PAGE_API_KEY (required; tests skip when unset)
 - POLI_PAGE_TEST_BASE_URL (optional; SDK default applies when unset)
-- POLI_PAGE_TEST_PROJECT / TEMPLATE / VERSION (overrides for the test template)
+- POLI_PAGE_TEST_PROJECT / TEMPLATE (overrides for the test template; default
+  `getting-started` / `welcome`, provisioned in every organization's sandbox)
 """
 
 from __future__ import annotations
@@ -37,11 +38,6 @@ def test_project() -> str:
 @pytest.fixture(scope="module")
 def test_template() -> str:
     return os.environ.get("POLI_PAGE_TEST_TEMPLATE", "welcome")
-
-
-@pytest.fixture(scope="module")
-def test_version() -> str:
-    return os.environ.get("POLI_PAGE_TEST_VERSION", "1.0.0")
 
 
 @pytest.fixture

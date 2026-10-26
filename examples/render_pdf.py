@@ -1,4 +1,4 @@
-# Demonstrates: client.render.pdf(input) — project mode only.
+# Demonstrates: client.render.pdf(input) — render a stored project template to PDF bytes.
 from poli_page import PoliPage
 
 client = PoliPage()  # picks up POLI_PAGE_API_KEY from the environment

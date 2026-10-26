@@ -35,7 +35,6 @@ CONTENT_TYPE_JSON = "application/json"
 # API paths -------------------------------------------------------------
 
 PATH_RENDER = "/v1/render"
-PATH_RENDER_PREVIEW = "/v1/render/preview"
 
 
 def path_document(document_id: str) -> str:

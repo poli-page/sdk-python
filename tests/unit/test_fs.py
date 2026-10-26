@@ -25,7 +25,6 @@ SAMPLE_RAW_DESCRIPTOR: dict[str, object] = {
     "projectSlug": "p",
     "templateId": "tpl_t",
     "templateSlug": "t",
-    "version": "1.0.0",
     "environment": "sandbox",
     "apiKeyId": "key_x",
     "format": "A4",
@@ -42,7 +41,6 @@ SAMPLE_RAW_DESCRIPTOR: dict[str, object] = {
 PROJECT_MODE_INPUT: dict[str, object] = {
     "project": "p",
     "template": "t",
-    "version": "1.0.0",
     "data": {},
 }
 
@@ -62,7 +60,7 @@ class TestRenderToFileSync:
     def test_writes_pdf_with_magic_bytes(self, tmp_path: Path) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        client = PoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         out = tmp_path / "a.pdf"
         render_to_file(client, PROJECT_MODE_INPUT, out)  # type: ignore[arg-type]
         content = out.read_bytes()
@@ -73,7 +71,7 @@ class TestRenderToFileSync:
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        client = PoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         out = tmp_path / "nested" / "deeply" / "b.pdf"
         render_to_file(client, PROJECT_MODE_INPUT, out)  # type: ignore[arg-type]
         assert out.is_file()
@@ -82,7 +80,7 @@ class TestRenderToFileSync:
     def test_overwrites_existing_file(self, tmp_path: Path) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        client = PoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         out = tmp_path / "c.pdf"
         out.write_bytes(b"stale junk that should be replaced")
         render_to_file(client, PROJECT_MODE_INPUT, out)  # type: ignore[arg-type]
@@ -92,22 +90,22 @@ class TestRenderToFileSync:
     def test_accepts_str_path(self, tmp_path: Path) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        client = PoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         out = str(tmp_path / "d.pdf")
         render_to_file(client, PROJECT_MODE_INPUT, out)  # type: ignore[arg-type]
         assert os.path.isfile(out)
 
     @respx.mock
-    def test_rejects_inline_mode(self, tmp_path: Path) -> None:
+    def test_rejects_input_without_project(self, tmp_path: Path) -> None:
         # The underlying pdf_stream raises PROJECT_REQUIRED_FOR_DOCUMENT;
         # render_to_file lets it surface.
         from poli_page import PoliPageError
 
-        client = PoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL)
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         with pytest.raises(PoliPageError) as excinfo:
             render_to_file(
                 client,
-                {"template": "<p>x</p>", "data": {}},  # type: ignore[arg-type]
+                {"template": "invoice", "data": {}},  # type: ignore[arg-type]
                 tmp_path / "e.pdf",
             )
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
@@ -143,7 +141,7 @@ class TestAsyncRenderToFile:
     async def test_writes_pdf_with_magic_bytes(self, tmp_path: Path) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        async with AsyncPoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL) as client:
             out = tmp_path / "a.pdf"
             await async_render_to_file(client, PROJECT_MODE_INPUT, out)  # type: ignore[arg-type]
         content = out.read_bytes()
@@ -153,7 +151,7 @@ class TestAsyncRenderToFile:
     async def test_creates_parent_directories(self, tmp_path: Path) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        async with AsyncPoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL) as client:
             out = tmp_path / "nested" / "deeply" / "b.pdf"
             await async_render_to_file(client, PROJECT_MODE_INPUT, out)  # type: ignore[arg-type]
         assert out.is_file()
@@ -162,7 +160,7 @@ class TestAsyncRenderToFile:
     async def test_overwrites_existing_file(self, tmp_path: Path) -> None:
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
-        async with AsyncPoliPage(api_key="pp_test_x", base_url=TEST_BASE_URL) as client:
+        async with AsyncPoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL) as client:
             out = tmp_path / "c.pdf"
             out.write_bytes(b"stale junk")
             await async_render_to_file(client, PROJECT_MODE_INPUT, out)  # type: ignore[arg-type]
