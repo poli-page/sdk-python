@@ -9,6 +9,8 @@ Mocked via respx; lives in tests/unit/.
 
 from __future__ import annotations
 
+from typing import assert_type
+
 import httpx
 import pytest
 import respx
@@ -112,6 +114,7 @@ class TestRenderDocument:
             return_value=_descriptor_response({"environment": "staging"})
         )
         doc = client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        assert_type(doc.environment, str)
         assert doc.environment == "staging"
 
     def test_descriptor_has_no_version_field(self) -> None:
