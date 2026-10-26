@@ -884,7 +884,7 @@ class TestPerCallTimeout:
         # Monkey-patch via context — we don't want global side-effects.
         with pytest.MonkeyPatch().context() as mp:
             mp.setattr(httpx.Client, "request", spy)
-            client.render.document({**RENDER_INPUT, "timeout": 5.0})  # type: ignore[arg-type]
+            client.render.document({**RENDER_INPUT, "timeout": 5.0})
         # httpx accepts `timeout` as a float or httpx.Timeout.
         assert "timeout" in captured
         # Either a bare float of 5.0, or an httpx.Timeout configured to 5.0.
