@@ -95,10 +95,18 @@ def test_pasted_key_is_saved_when_well_formed(
     assert env_file.read_text(encoding="utf-8") == f"POLI_PAGE_API_KEY={key}\n"
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "pp_sandbox_x",
+        # Has a known prefix but no 32-hex body: only the full-key regex refuses it.
+        "pp_test_x",
+    ],
+)
 def test_pasted_key_is_refused_when_malformed(
-    env_file: Path, monkeypatch: pytest.MonkeyPatch
+    key: str, env_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("builtins.input", lambda _prompt="": "pp_sandbox_x")
+    monkeypatch.setattr("builtins.input", lambda _prompt="": key)
 
     with pytest.raises(SystemExit) as excinfo:
         shared.ensure_api_key()
