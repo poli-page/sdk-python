@@ -365,6 +365,8 @@ class TestDocumentsDelete:
         route = respx.delete(f"{TEST_BASE_URL}/v1/documents/doc_abc123").mock(
             return_value=httpx.Response(204)
         )
-        assert client.documents.delete("doc_abc123") is None
-        assert client.documents.delete("doc_abc123") is None
+        first = client.documents.delete("doc_abc123")
+        second = client.documents.delete("doc_abc123")
+        assert first is None
+        assert second is None
         assert route.call_count == 2

@@ -185,6 +185,8 @@ class TestDocumentsDelete:
             return_value=httpx.Response(204)
         )
         async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
-            assert await client.documents.delete("doc_abc123") is None
-            assert await client.documents.delete("doc_abc123") is None
+            first = await client.documents.delete("doc_abc123")
+            second = await client.documents.delete("doc_abc123")
+            assert first is None
+            assert second is None
         assert route.call_count == 2
