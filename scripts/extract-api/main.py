@@ -113,56 +113,56 @@ PUBLIC_TYPES = [
 # Per-method error mapping. The extractor cannot reliably infer which API
 # codes each endpoint raises from source comments — we encode it here once,
 # in lockstep with the API spec, and update on changes.
+# Codes a render can return; the byte-returning methods add DOWNLOAD_FAILED
+# for the presigned-URL fetch that follows the render.
+_RENDER_ERRORS: list[dict[str, str]] = [
+    {"code": "PROJECT_REQUIRED_FOR_DOCUMENT", "when": "Input without a `project`. Rejected locally before the HTTP call."},
+    {"code": "VALIDATION_ERROR", "when": "The request body failed validation."},
+    {"code": "INVALID_API_KEY", "when": "The API key is malformed or revoked."},
+    {"code": "PROJECT_NOT_FOUND", "when": "No project with this slug in the organization."},
+    {"code": "PROJECT_NOT_IN_ENVIRONMENT", "when": "The project is not published in the key's environment."},
+    {"code": "TEMPLATE_NOT_FOUND", "when": "The template is not in the project's copy published in the key's environment."},
+    {"code": "TEMPLATE_ERROR", "when": "The engine rejected the template or its data."},
+    {"code": "EMPTY_DOCUMENT", "when": "The render produced zero pages."},
+    {"code": "RENDER_BODY_TOO_LARGE", "when": "The request body is over the API's size limit (413)."},
+    {"code": "DOCUMENT_TOO_LARGE", "when": "The document exceeds an engine cap (413)."},
+    {"code": "QUOTA_EXCEEDED", "when": "Monthly quota reached. Retryable."},
+    {"code": "RATE_LIMIT_EXCEEDED", "when": "Per-key render rate limit reached. Retryable."},
+    {"code": "PUBLISH_IN_PROGRESS", "when": "The project is being published into this environment (503 with `Retry-After`). Retryable."},
+    {"code": "RENDER_TIMEOUT", "when": "The engine's time budget expired (504). Retryable."},
+    {"code": "timeout", "when": "Request exceeded the configured `timeout`. Retryable."},
+    {"code": "network_error", "when": "TCP/TLS-level failure reaching the API. Retryable."},
+    {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
+]
+_DOWNLOAD_FAILED = {"code": "DOWNLOAD_FAILED", "when": "The S3 second-hop download for the rendered PDF failed."}
+_DOCUMENT_READ_ERRORS: list[dict[str, str]] = [
+    {"code": "DOCUMENT_NOT_FOUND", "when": "No stored document matches the supplied id."},
+    {"code": "DOCUMENT_GONE", "when": "The document was deleted, or is a `sandbox` document older than 30 days."},
+    {"code": "FORBIDDEN", "when": "The document belongs to another organization or another environment than the key's."},
+    {"code": "INVALID_API_KEY", "when": "The API key is malformed or revoked."},
+    {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
+]
+
 METHOD_ERRORS: dict[str, list[dict[str, str]]] = {
-    "render-pdf": [
-        {"code": "VALIDATION_ERROR", "when": "The `data` mapping does not satisfy the template schema."},
-        {"code": "NOT_FOUND", "when": "The `project/template` slug does not exist."},
-        {"code": "QUOTA_EXCEEDED", "when": "Per-key rate limit or monthly quota reached. Retryable."},
-        {"code": "timeout", "when": "Request exceeded the configured `timeout`. Retryable."},
-        {"code": "network_error", "when": "TCP/TLS-level failure reaching the API. Retryable."},
-        {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
-        {"code": "DOWNLOAD_FAILED", "when": "The S3 second-hop download for the rendered PDF failed."},
+    "render-pdf": [*_RENDER_ERRORS, _DOWNLOAD_FAILED],
+    "render-pdf-stream": [*_RENDER_ERRORS, _DOWNLOAD_FAILED],
+    "render-document": _RENDER_ERRORS,
+    "documents-get": _DOCUMENT_READ_ERRORS,
+    "documents-preview": _DOCUMENT_READ_ERRORS,
+    "documents-thumbnails": [
+        *_DOCUMENT_READ_ERRORS[:3],
+        {"code": "THUMBNAILS_NOT_AVAILABLE", "when": "Thumbnails are not available on the organization's tier (Free)."},
+        {"code": "VALIDATION_ERROR", "when": "Thumbnail options are out of bounds."},
+        *_DOCUMENT_READ_ERRORS[3:],
     ],
-    "render-pdf-stream": [
-        {"code": "VALIDATION_ERROR", "when": "The `data` mapping does not satisfy the template schema."},
-        {"code": "NOT_FOUND", "when": "The `project/template` slug does not exist."},
-        {"code": "QUOTA_EXCEEDED", "when": "Per-key rate limit or monthly quota reached. Retryable."},
-        {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
-        {"code": "DOWNLOAD_FAILED", "when": "The S3 second-hop streaming download failed."},
-    ],
-    "render-document": [
-        {"code": "VALIDATION_ERROR", "when": "The `data` mapping does not satisfy the template schema."},
-        {"code": "NOT_FOUND", "when": "The `project/template` slug does not exist."},
-        {"code": "PROJECT_REQUIRED_FOR_DOCUMENT", "when": "Inline-shaped input was passed. Rejected locally before the HTTP call."},
-        {"code": "QUOTA_EXCEEDED", "when": "Per-key rate limit or monthly quota reached. Retryable."},
-        {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
-    ],
-    "documents-get": [
-        {"code": "DOCUMENT_NOT_FOUND", "when": "No stored document matches the supplied id."},
+    "documents-delete": [
+        {"code": "DOCUMENT_NOT_FOUND", "when": "No stored document matches the supplied id. An already-deleted document is not an error (`204`)."},
+        {"code": "FORBIDDEN", "when": "The document belongs to another organization or another environment than the key's."},
+        {"code": "ENVIRONMENT_PROTECTED", "when": "The environment is protected and the key's role is not owner or admin."},
         {"code": "INVALID_API_KEY", "when": "The API key is malformed or revoked."},
         {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
     ],
-    "documents-preview": [
-        {"code": "DOCUMENT_NOT_FOUND", "when": "No stored document matches the supplied id."},
-        {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
-    ],
-    "documents-thumbnails": [
-        {"code": "DOCUMENT_NOT_FOUND", "when": "No stored document matches the supplied id."},
-        {"code": "VALIDATION_ERROR", "when": "Thumbnail options failed validation."},
-        {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
-    ],
-    "documents-delete": [
-        {"code": "DOCUMENT_NOT_FOUND", "when": "No stored document matches the supplied id."},
-        {"code": "GONE", "when": "Document was already deleted."},
-        {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
-    ],
-    "render-to-file": [
-        {"code": "PROJECT_REQUIRED_FOR_DOCUMENT", "when": "Inline-shaped input. Rejected locally before the HTTP call."},
-        {"code": "VALIDATION_ERROR", "when": "The `data` mapping does not satisfy the template schema."},
-        {"code": "NOT_FOUND", "when": "The `project/template` slug does not exist."},
-        {"code": "QUOTA_EXCEEDED", "when": "Per-key rate limit or monthly quota reached. Retryable."},
-        {"code": "DOWNLOAD_FAILED", "when": "The S3 second-hop streaming download failed."},
-    ],
+    "render-to-file": [*_RENDER_ERRORS, _DOWNLOAD_FAILED],
 }
 
 
@@ -347,19 +347,19 @@ def _params_for_method(spec: dict[str, str], func_info: FunctionInfo) -> list[di
     output stable across docstring rewordings.
     """
     descriptions: dict[str, dict[str, str]] = {
-        "render-pdf": {"input": "Project-mode render input (`project`, `template`, `data`, plus optional `version`, `format`, `orientation`, `locale`, `metadata`, `idempotency_key`)."},
-        "render-pdf-stream": {"input": "Project-mode render input. Same shape as `render.pdf`."},
-        "render-document": {"input": "Project-mode render input. Same shape as `render.pdf`."},
+        "render-pdf": {"input": "Render input (`project`, `template`, `data`, plus optional `format`, `orientation`, `locale`, `metadata`, `idempotency_key`, `timeout`). The API renders the project's copy published in the key's environment."},
+        "render-pdf-stream": {"input": "Render input. Same shape as `render.pdf`."},
+        "render-document": {"input": "Render input. Same shape as `render.pdf`."},
         "documents-get": {"id": "The `document_id` returned by a prior `render.document` call."},
         "documents-preview": {"id": "The `document_id` of the stored document to preview."},
         "documents-thumbnails": {
             "id": "The `document_id` of the stored document.",
-            "options": "Thumbnail options — `width` (required), `format`, `quality`, `pages`.",
+            "options": "Optional thumbnail options — `width`, `format` (`jpeg`, `png` or `webp`), `quality`, `pages`. Unset options take the API's defaults.",
         },
         "documents-delete": {"id": "The `document_id` of the stored document to delete."},
         "render-to-file": {
             "client": "A `PoliPage` instance.",
-            "input": "Project-mode render input.",
+            "input": "Render input. Same shape as `render.pdf`.",
             "path": "Destination path. Parent directories are created automatically.",
         },
     }
@@ -449,7 +449,7 @@ def _method_mdx(spec: dict[str, str], func_info: FunctionInfo) -> str:
     # signature card to the user-facing protocol so docs reflect intent.
     sig_card_overrides = {
         "render-pdf-stream": (
-            "render.pdf_stream(input: ProjectModeInput) -> ContextManager[Iterator[bytes]]"
+            "render.pdf_stream(input: RenderInput) -> ContextManager[Iterator[bytes]]"
         ),
     }
     signature_for_card = sig_card_overrides.get(spec["slug"], signature_for_card)
@@ -614,25 +614,25 @@ def _errors_mdx() -> str:
 
         <ErrorTable errors={[{"code":"MISSING_API_KEY","when":"No API key in the request."},{"code":"INVALID_API_KEY","when":"The API key is malformed or revoked."}]} />
 
-        ## Billing and lifecycle
+        ## Organization state and permission
 
-        <ErrorTable errors={[{"code":"PAYMENT_REQUIRED","when":"Organization billing is past due."},{"code":"FORBIDDEN","when":"The key does not have access to the requested resource."},{"code":"ORGANIZATION_CANCELLED","when":"The organization has been cancelled."},{"code":"ORGANIZATION_PURGED","when":"The organization has been purged."}]} />
+        <ErrorTable errors={[{"code":"ORGANIZATION_PAYMENT_GRACE","when":"The organization has unpaid invoices: it is read-only and writes are refused."},{"code":"ORGANIZATION_CANCELLED","when":"The organization has been cancelled: read-only until purge."},{"code":"ORGANIZATION_PURGED","when":"The organization has been purged (410)."},{"code":"ORGANIZATION_MIGRATING","when":"The organization's storage is being migrated (503). Retryable."},{"code":"FORBIDDEN","when":"The document belongs to another organization or another environment than the key's."},{"code":"ENVIRONMENT_PROTECTED","when":"documents.delete in a protected environment by a key whose role is not owner or admin."},{"code":"THUMBNAILS_NOT_AVAILABLE","when":"documents.thumbnails on the Free tier."}]} />
 
         ## Not found
 
-        <ErrorTable errors={[{"code":"NOT_FOUND","when":"The project/template slug does not exist or is not published."},{"code":"VERSION_NOT_FOUND","when":"The pinned version does not exist for this template."},{"code":"DOCUMENT_NOT_FOUND","when":"No stored document matches the supplied id."},{"code":"GONE","when":"The resource existed but has been deleted."}]} />
+        <ErrorTable errors={[{"code":"NOT_FOUND","when":"Generic not found, for example a removed route."},{"code":"PROJECT_NOT_FOUND","when":"No project with this slug in the organization."},{"code":"PROJECT_NOT_IN_ENVIRONMENT","when":"The project was never published in the key's environment, or was removed from it."},{"code":"TEMPLATE_NOT_FOUND","when":"The template is not in the project's copy published in the key's environment."},{"code":"DOCUMENT_NOT_FOUND","when":"No stored document matches the supplied id."},{"code":"DOCUMENT_GONE","when":"The document was deleted, or is a sandbox document older than 30 days (410)."}]} />
 
         ## Validation
 
-        <ErrorTable errors={[{"code":"VALIDATION_ERROR","when":"`data` does not satisfy the template schema."},{"code":"MISSING_DATA","when":"Request body lacks the required `data` field."},{"code":"MISSING_PROJECT_OR_TEMPLATE","when":"Project mode call without both `project` and `template`."},{"code":"MISSING_TEMPLATE_SLUG","when":"Template slug is missing."},{"code":"PROJECT_REQUIRED_FOR_DOCUMENT","when":"Inline-shaped input on a PDF-producing method. Rejected locally before any HTTP call."},{"code":"INVALID_VERSION_FORMAT","when":"The `version` string is not a valid semver."},{"code":"VERSION_REQUIRED","when":"Live keys require a pinned `version`."},{"code":"INVALID_VERSION_FOR_KEY_ENV","when":"Sandbox key targeting a live-only version, or vice versa."}]} />
+        <ErrorTable errors={[{"code":"VALIDATION_ERROR","when":"The request body failed validation, for example thumbnail options out of bounds."},{"code":"MISSING_DATA","when":"Request body lacks the required `data` field."},{"code":"MISSING_TEMPLATE_SLUG","when":"Template slug is missing."},{"code":"PROJECT_REQUIRED_FOR_DOCUMENT","when":"Input without a `project` on a render method. Rejected locally before any HTTP call."},{"code":"TEMPLATE_ERROR","when":"The engine rejected the template or its data."},{"code":"EMPTY_DOCUMENT","when":"The render produced zero pages."},{"code":"ENVIRONMENT_MISMATCH","when":"A caller named another environment than the key's. This SDK never sends one."},{"code":"RENDER_BODY_TOO_LARGE","when":"The request body is over the API's size limit (413)."},{"code":"DOCUMENT_TOO_LARGE","when":"The document exceeds an engine cap (413)."}]} />
 
         ## Rate and quota
 
-        <ErrorTable errors={[{"code":"QUOTA_EXCEEDED","when":"Per-key rate limit or monthly quota reached. Retryable."},{"code":"OVERAGE_CAP_EXCEEDED","when":"Hard overage cap reached. Not retryable."}]} />
+        <ErrorTable errors={[{"code":"RATE_LIMIT_EXCEEDED","when":"Per-key render rate limit reached. Retryable."},{"code":"QUOTA_EXCEEDED","when":"Monthly quota reached. Retryable."},{"code":"OVERAGE_CAP_EXCEEDED","when":"Overage cap reached (paid tiers). Retryable."}]} />
 
         ## Server
 
-        <ErrorTable errors={[{"code":"INTERNAL_ERROR","when":"The API returned 5xx. Retryable."}]} />
+        <ErrorTable errors={[{"code":"INTERNAL_ERROR","when":"Unexpected server error. Retryable."},{"code":"STORAGE_ACCESS_DENIED","when":"The organization's own storage bucket refuses access (502). Retryable."},{"code":"PUBLISH_IN_PROGRESS","when":"The project is being published into this environment (503 with `Retry-After`). Retryable."},{"code":"RENDER_TIMEOUT","when":"The engine's time budget expired (504). Retryable."}]} />
         """
     )
 

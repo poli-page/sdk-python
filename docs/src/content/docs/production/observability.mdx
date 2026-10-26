@@ -9,7 +9,7 @@ The SDK exposes two layers of observability: SDK-level hooks (`on_retry`, `on_er
 
 Both `PoliPage` and `AsyncPoliPage` accept two optional sync callables on the constructor:
 
-- `on_retry(event)` — fires when the SDK decides to retry. `event.attempt` (1-based, next attempt), `event.delay_seconds`, `event.reason` (the `PoliPageError` that triggered the retry).
+- `on_retry(event)` — fires when the SDK decides to retry. `event.attempt` (1-based, next attempt), `event.delay_ms` (the sleep before that attempt, in milliseconds), `event.reason` (the `PoliPageError` that triggered the retry).
 - `on_error(err)` — fires when a request fails terminally (after retries are exhausted).
 
 Both hooks are fire-and-forget — exceptions inside them are caught and logged at DEBUG, never propagated.
@@ -52,7 +52,7 @@ The caller owns the lifecycle of an injected client — `PoliPage.close()` does 
 from poli_page import PoliPage
 
 def on_retry(event):
-    print(f"↻ retry attempt={event.attempt} in {event.delay_seconds:.2f}s: {event.reason.code}")
+    print(f"↻ retry attempt={event.attempt} in {event.delay_ms:.0f} ms: {event.reason.code}")
 
 def on_error(err):
     print(f"✗ {err.code} {err.request_id or ''}: {err.message}")

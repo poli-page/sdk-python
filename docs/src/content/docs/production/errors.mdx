@@ -38,13 +38,18 @@ These originate inside the SDK before any HTTP call (or in response to a network
 Returned by the Poli Page API. Uppercase, snake-case. The SDK forwards the code verbatim.
 
 <ErrorTable errors={[
-  { code: 'INVALID_API_KEY', when: 'The API key is malformed or revoked.', recovery: 'Rotate the key in the dashboard.' },
+  { code: 'INVALID_API_KEY', when: 'The API key is malformed or revoked.', recovery: 'Create a new key in the dashboard.' },
   { code: 'MISSING_API_KEY', when: 'No API key was provided in the request.', recovery: 'Check the constructor was called with `api_key`.' },
-  { code: 'NOT_FOUND', when: 'The `project/template` slug or document id does not exist.', recovery: 'Verify the slug/id; check the template is published in this environment.' },
-  { code: 'VALIDATION_ERROR', when: 'The `data` mapping does not satisfy the template schema.', recovery: 'Inspect the template schema in the dashboard.' },
-  { code: 'MISSING_DATA', when: 'The request body lacks a required `data` field.', recovery: 'Pass `data={}` (or with values) on every render call.' },
-  { code: 'QUOTA_EXCEEDED', when: 'You exceeded the per-key rate limit or monthly quota.', recovery: 'Automatically retried; bump tier for sustained higher throughput.' },
-  { code: 'PAYMENT_REQUIRED', when: 'The organization\'s billing is past due.', recovery: 'Update the payment method in the dashboard.' },
+  { code: 'PROJECT_NOT_FOUND', when: 'No project with this slug exists in the organization.', recovery: 'Check the `project` slug.' },
+  { code: 'PROJECT_NOT_IN_ENVIRONMENT', when: 'The project was never published to the key\'s environment, or was removed from it.', recovery: 'Publish the project to the environment of the key you render with.' },
+  { code: 'TEMPLATE_NOT_FOUND', when: 'The template is not in the project\'s copy published in the key\'s environment.', recovery: 'Check the `template` slug; publish the project again if the template is new.' },
+  { code: 'DOCUMENT_GONE', when: 'The document was deleted, or is a `sandbox` document older than 30 days.', recovery: 'Render it again.' },
+  { code: 'VALIDATION_ERROR', when: 'The request body failed validation (for example thumbnail options out of bounds).', recovery: 'Inspect `err.message` for the failing field.' },
+  { code: 'MISSING_DATA', when: 'The request body lacks a required `data` field.', recovery: 'Pass `data` (`{}` when the template needs none) on every render call.' },
+  { code: 'QUOTA_EXCEEDED', when: 'The organization reached its monthly quota.', recovery: 'Automatically retried; bump tier for sustained higher throughput.' },
+  { code: 'RATE_LIMIT_EXCEEDED', when: 'Too many render requests for this key in a short window.', recovery: 'Automatically retried; spread the load.' },
+  { code: 'PUBLISH_IN_PROGRESS', when: 'The project is being published into this environment (503 with `Retry-After`).', recovery: 'Automatically retried after `Retry-After`.' },
+  { code: 'ORGANIZATION_PAYMENT_GRACE', when: 'The organization has unpaid invoices: it is read-only and renders are refused.', recovery: 'Update the payment method in the dashboard.' },
   { code: 'INTERNAL_ERROR', when: 'The API returned 5xx.', recovery: 'Automatically retried; contact support if it persists.' },
 ]} />
 

@@ -8,6 +8,7 @@ ANSI colors, step banner, file-URL formatting, and API-key resolution
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Final
@@ -102,10 +103,27 @@ def _append_to_env_file(path: Path, key: str, value: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+# The SDK contract's full-key regex, verbatim: `pp_{env}_{32 lowercase hex}`.
+# It checks the format only; any well-formed environment name is accepted.
+API_KEY_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$"
+)
+
+
+def is_well_formed_key(key: str) -> bool:
+    """Whether `key` matches the contract's full-key regex."""
+    # fullmatch: a bare `$` would also accept a trailing newline.
+    return API_KEY_PATTERN.fullmatch(key) is not None
+
+
 def resolve_base_url() -> str:
-    """Resolve the API base URL: env → `.env` → default `https://api.poli.page`."""
-    if "POLI_PAGE_BASE_URL" in os.environ:
-        return os.environ["POLI_PAGE_BASE_URL"]
+    """Resolve the API base URL: env → `.env` → default `https://api.poli.page`.
+
+    An empty value counts as unset.
+    """
+    from_env = os.environ.get("POLI_PAGE_BASE_URL")
+    if from_env:
+        return from_env
     from_file = _read_env_file(ENV_FILE).get("POLI_PAGE_BASE_URL")
     if from_file:
         return from_file
@@ -115,15 +133,17 @@ def resolve_base_url() -> str:
 def ensure_api_key() -> str:
     """Resolve `POLI_PAGE_API_KEY`. Prompt and persist on first run.
 
-    Resolution order:
+    Resolution order (an empty value counts as unset):
       1. `os.environ['POLI_PAGE_API_KEY']` — wins for CI / shell.
       2. `.env` at the repo root.
       3. Interactive prompt; pasted key appends to `.env` for future runs.
 
-    Exits with a friendly error if the input doesn't start with `pp_test_`.
+    Exits with a friendly error if the pasted key is not a well-formed
+    `pp_{env}_…` key.
     """
-    if "POLI_PAGE_API_KEY" in os.environ:
-        return os.environ["POLI_PAGE_API_KEY"]
+    from_env = os.environ.get("POLI_PAGE_API_KEY")
+    if from_env:
+        return from_env
 
     from_file = _read_env_file(ENV_FILE).get("POLI_PAGE_API_KEY")
     if from_file:
@@ -137,9 +157,15 @@ def ensure_api_key() -> str:
     print(rule)
     print()
     print(
-        "   This demo needs a test key (" + c.cyan("pp_test_*") + ") to talk to the Poli Page API."
+        "   This demo needs a key of your organization's "
+        + c.cyan("sandbox")
+        + " environment ("
+        + c.cyan("pp_sandbox_…")
+        + ")."
     )
-    print("   Test keys never bill or send real documents.")
+    print("   Sandbox renders are watermarked and do not count toward your quota.")
+    print("   Use a fresh organization: the demo renders its untouched")
+    print("   " + c.cyan("getting-started") + " project.")
     print()
     print(c.bold("   How to get one:"))
     print("     1. Sign in at " + c.cyan("https://app.poli.page"))
@@ -147,7 +173,13 @@ def ensure_api_key() -> str:
     print("          " + c.cyan("https://app.poli.page/orgs/{YOUR_ORG}/keys"))
     print(c.dim("        (replace {YOUR_ORG} with your org slug — visible in the"))
     print(c.dim("         dashboard URL when you're inside your organization)"))
-    print("     3. Click 'Create key' and copy the value (starts with " + c.cyan("pp_test_") + ").")
+    print(
+        "     3. Create a key in the "
+        + c.cyan("sandbox")
+        + " environment and copy the value (starts with "
+        + c.cyan("pp_sandbox_")
+        + ")."
+    )
     print()
     print("   Paste it below — we'll save it to " + c.cyan(str(ENV_FILE)) + " so future")
     print("   runs pick it up automatically. (You can also set")
@@ -155,14 +187,18 @@ def ensure_api_key() -> str:
     print()
 
     try:
-        key = input(c.bold("   Paste your pp_test_* key") + " (or Ctrl-C to cancel): ").strip()
+        key = input(c.bold("   Paste your pp_sandbox_… key") + " (or Ctrl-C to cancel): ").strip()
     except (EOFError, KeyboardInterrupt):
         print()
         sys.exit(1)
 
-    if not key.startswith("pp_test_"):
+    if not is_well_formed_key(key):
         print()
-        print("  " + c.red("✗") + " Expected a key starting with `pp_test_`. Aborting.")
+        print(
+            "  "
+            + c.red("✗")
+            + " Expected a key shaped `pp_{env}_` + 32 lowercase hex characters. Aborting."
+        )
         print()
         sys.exit(1)
 

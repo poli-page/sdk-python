@@ -1,15 +1,11 @@
 ---
-title: Render modes
-description: Project mode renders a stored template; inline mode renders raw HTML and is supported only by preview.
+title: Render input
+description: Every render names a published project and template by slug, plus the data that fills the template.
 ---
 
-The Python SDK exposes two ways to describe what to render: **project mode** (a stored template at `project/template`) and **inline mode** (raw HTML you pass directly).
+Every render method (`render.pdf`, `render.pdf_stream`, `render.document`, and the `render_to_file` helper) takes the same input, the `RenderInput` `TypedDict` in the [types reference](../../reference/types/): a `project` slug, a `template` slug inside it, and a `data` mapping that fills the template's placeholders.
 
-Project mode is required by all the PDF-producing methods (`render.pdf`, `render.pdf_stream`, `render.document`, and the `render_to_file` helper). Inline mode is supported only by `render.preview`, which returns HTML rather than PDF bytes — useful for debugging template data without engaging the PDF pipeline.
-
-## Project mode
-
-You reference a template by its `project` and `template` slugs, plus a `data` mapping that fills the template's placeholders. Optionally pin a `version`.
+## Required fields
 
 ```python
 pdf = client.render.pdf({
@@ -19,20 +15,22 @@ pdf = client.render.pdf({
 })
 ```
 
-Project mode keeps templates centralized — anyone with dashboard access can edit them without touching code.
+There is no version to pick: the API renders the project's copy published in the API key's environment (see [Authentication](../authentication/)). To render your own templates, publish the project to that environment first. Input without a `project` raises `PoliPageError(code="PROJECT_REQUIRED_FOR_DOCUMENT")` locally — no HTTP round-trip is wasted.
 
-## Inline mode (preview only)
+## Optional fields
 
-For one-off layout experiments, pass the HTML directly. The `template` field accepts a string when there's no `project`:
+- `format` — a page format such as `"A4"` or `"Letter"`.
+- `orientation` — `"portrait"` or `"landscape"`.
+- `locale` — a BCP 47 tag (e.g. `"en-US"`).
+- `metadata` — your own primitive-valued audit data, echoed on the `DocumentDescriptor`.
+- `idempotency_key` — overrides the auto-generated `Idempotency-Key` header.
+- `timeout` — a per-call deadline in seconds, overriding the client's `timeout`.
 
-```python
-preview = client.render.preview({
-    "template": "<h1>Hello {{ name }}</h1>",
-    "data": {"name": "World"},
-})
-```
+The request body carries only `project`, `template`, `data`, `metadata`, `format`, `orientation` and `locale`. An unset or `None` field is left out, so the API's defaults apply, and any other key in the dict is not sent.
 
-Inline mode only works with `render.preview`. To turn inline HTML into a PDF, save it as a template in the dashboard first, then use project mode. Calling `render.pdf` / `render.pdf_stream` / `render.document` with inline input raises `PoliPageError(code="PROJECT_REQUIRED_FOR_DOCUMENT")` locally — no HTTP round-trip is wasted.
+## Previews and inline HTML
+
+The API renders published templates only. To preview a template or render inline HTML while you design it, use the playground at [play.poli.page](https://play.poli.page). `client.documents.preview(id)` returns the stored HTML of a document you already rendered.
 
 ## Example
 
@@ -41,17 +39,13 @@ from poli_page import PoliPage
 
 client = PoliPage()
 
-# Project mode — PDF
 invoice_pdf = client.render.pdf({
     "project": "billing",
     "template": "invoice",
     "data": {"invoiceNumber": "INV-001", "total": 1280},
-})
-
-# Inline mode — preview HTML only
-greeting = client.render.preview({
-    "template": "<h1>Hello {{ name }}</h1>",
-    "data": {"name": "World"},
+    "format": "A4",
+    "orientation": "portrait",
+    "metadata": {"customer_id": "cust_123"},
 })
 ```
 

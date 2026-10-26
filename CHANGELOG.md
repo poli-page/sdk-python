@@ -4,12 +4,16 @@ All notable changes to `poli-page` (Python SDK) are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Breaking changes between major versions are summarized in [MIGRATION.md](MIGRATION.md).
+Breaking changes are summarized in [MIGRATION.md](MIGRATION.md). While the package is on 0.x,
+a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
 Environments contract: a key carries its environment (`pp_{env}_…`), versions and the
-authenticated preview are gone. Breaking, with no deprecation window.
+authenticated preview are gone. Breaking, with no deprecation window. See
+[MIGRATION.md](MIGRATION.md#from-09x-to-0100).
 
 ### Removed
 
@@ -40,6 +44,22 @@ authenticated preview are gone. Breaking, with no deprecation window.
 - `documents.delete` is documented as idempotent: the API answers `204` for an
   already-deleted document.
 - Docstrings use `pp_sandbox_…` keys; `pp_test_…` keys no longer exist.
+- **README and docs site**: the quick start renders `getting-started`/`welcome` with a
+  `sandbox` key and no version. "Authentication & environments" carries the key table
+  (`sandbox` / `live` / created environments), the sandbox properties (watermarked, not
+  counted, 30-day expiry), the `poli-watermark` note and the full-key regex. The preview /
+  inline-HTML sections are replaced by a link to the playground, https://play.poli.page.
+  The "Render modes" docs page is now "Render input". The error tables list the current
+  codes.
+- **Demos** (`demo/sync_demo.py`, `demo/async_demo.py`): they ask for a `sandbox` key and
+  check a pasted key against the full-key regex only, render `getting-started`/`welcome`
+  with no version, drop the `render.preview` step and end with the `not-found` step
+  (template `does-not-exist`, `404 TEMPLATE_NOT_FOUND`), which prints the error's `code`,
+  `status`, `message` and `request_id`. Nine steps instead of ten. An empty
+  `POLI_PAGE_API_KEY` or `POLI_PAGE_BASE_URL` counts as unset.
+- **Integration workflow**: `POLI_PAGE_TEST_VERSION` is gone. The key comes from the
+  `POLI_PAGE_API_KEY` secret (a `pp_sandbox_` key) and the optional base URL from the
+  `POLI_PAGE_TEST_BASE_URL` secret.
 
 ### Added
 
@@ -51,6 +71,11 @@ authenticated preview are gone. Breaking, with no deprecation window.
   An error code the SDK does not list still reaches `err.code` verbatim.
 - A render that meets a publish in progress (`503 PUBLISH_IN_PROGRESS` with `Retry-After`) is
   retried by the existing policy, then surfaces with that code.
+
+### Fixed
+
+- The `on_retry` examples in the README, the docs site and the demos read `event.delay_ms`.
+  They used `event.delay_seconds`, which `RetryEvent` does not have.
 
 ## [0.9.0] - 2026-06-19
 

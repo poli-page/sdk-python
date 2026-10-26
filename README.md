@@ -26,36 +26,40 @@ Requires Python 3.11 or later.
 
 ## Quick start
 
-### Project mode — render a published template by slug
+### Render a template by slug
+
+Set `POLI_PAGE_API_KEY` to a `sandbox` key of a fresh organization (`pp_sandbox_…`, see [Authentication & environments](#authentication--environments)), then:
 
 ```python
 from poli_page import PoliPage
 
-client = PoliPage(api_key="pp_test_...")
+client = PoliPage()  # reads POLI_PAGE_API_KEY from the environment
 
 pdf = client.render.pdf(
     {
         "project": "getting-started",
         "template": "welcome",
-        "version": "1.0.0",
-        "data": {"name": "World"},
+        "data": {"name": "SDK Demo"},
     }
 )
 # pdf is bytes
 ```
 
-Every Poli Page org comes pre-provisioned with a `getting-started/welcome` template, so the snippet above runs as-is the moment you have an API key — no project setup needed. For your own templates, swap the slugs once you've pushed a version with the `poli` CLI:
+Every organization gets a `getting-started` project, published into its `sandbox` environment when the organization is created, with a `welcome` template. A sandbox key renders it with no setup, so the snippet above runs as-is on a fresh organization. It is a normal, editable project: in an organization that renamed it, deleted it or removed it from `sandbox`, the API answers `404 PROJECT_NOT_FOUND` or `404 PROJECT_NOT_IN_ENVIRONMENT`, so use a fresh organization to follow along.
+
+There is no version to pick: a render uses the project's copy published in the API key's environment. For your own templates, publish the project to the environment of the key you render with, then swap the slugs:
 
 ```python
 pdf = client.render.pdf(
     {
         "project": "billing",
         "template": "invoice",
-        "version": "1.0.0",
         "data": {"invoice_number": "INV-001", "total": 1280},
     }
 )
 ```
+
+To preview a template or render inline HTML while you design it, use the playground: <https://play.poli.page>. The API and this SDK render published templates only.
 
 ### Async client
 
@@ -67,13 +71,12 @@ from poli_page import AsyncPoliPage
 
 
 async def main():
-    async with AsyncPoliPage(api_key="pp_test_...") as client:
+    async with AsyncPoliPage() as client:  # reads POLI_PAGE_API_KEY
         pdf = await client.render.pdf(
             {
                 "project": "getting-started",
                 "template": "welcome",
-                "version": "1.0.0",
-                "data": {"name": "World"},
+                "data": {"name": "SDK Demo"},
             }
         )
 
@@ -83,36 +86,19 @@ asyncio.run(main())
 
 Pick the variant at construction time. The SDK does not auto-detect "am I in an async context" — that pattern bites later.
 
-### Preview inline HTML
-
-`render.preview` accepts raw HTML for live editing and visual inspection without producing a stored document. Use this for editor previews or layout tests.
-
-```python
-result = client.render.preview(
-    {
-        "template": "<h1>Hello {{ name }}</h1>",
-        "data": {"name": "World"},
-    }
-)
-print(f"Rendered {result.total_pages} page(s) in {result.environment} mode")
-```
-
-**`render.pdf`, `render.pdf_stream`, and `render.document` require project mode** — `project` + `template`, optionally pinned to a specific `version` (omit to render the current draft). Inline HTML is only accepted by `render.preview`. The SDK enforces this at runtime (and at type-check time when pyright is configured).
-
 ### Write a PDF to disk
 
 ```python
 from poli_page import PoliPage
 from poli_page.fs import render_to_file
 
-client = PoliPage(api_key="pp_test_...")
+client = PoliPage()  # reads POLI_PAGE_API_KEY
 render_to_file(
     client,
     {
         "project": "getting-started",
         "template": "welcome",
-        "version": "1.0.0",
-        "data": {"name": "World"},
+        "data": {"name": "SDK Demo"},
     },
     "./welcome.pdf",
 )
@@ -129,7 +115,9 @@ python demo/sync_demo.py     # synchronous client
 python demo/async_demo.py    # asynchronous client
 ```
 
-First run prompts for a `pp_test_*` key and saves it to `.env` at the repo root. Subsequent runs are silent. Outputs land in `demo/output-sync/` and `demo/output-async/`. See [`demo/README.md`](demo/README.md).
+The demos render `getting-started`/`welcome`. First run prompts for a `sandbox` key (`pp_sandbox_…`) and saves it to `.env` at the repo root. Subsequent runs are silent. The `POLI_PAGE_API_KEY` env var wins over the file when set; `POLI_PAGE_BASE_URL` (optional) overrides the API host. Outputs land in `demo/output-sync/` and `demo/output-async/`.
+
+Each demo walks nine steps: `render.pdf` → `render.pdf_stream` → `render_to_file` (async: `async_render_to_file`) → `render.document` → `documents.get` → `documents.thumbnails` → `documents.preview` → `documents.delete` → `not-found` (a render of a template that does not exist, caught as `NotFoundError` with code `TEMPLATE_NOT_FOUND`). See [`demo/README.md`](demo/README.md).
 
 ### Stream — for large PDFs or piping to S3 / HTTP responses
 
@@ -138,7 +126,6 @@ with client.render.pdf_stream(
     {
         "project": "billing",
         "template": "invoice",
-        "version": "1.0.0",
         "data": {"invoice_number": "INV-001"},
     }
 ) as stream:
@@ -159,7 +146,6 @@ doc = client.render.document(
     {
         "project": "billing",
         "template": "invoice",
-        "version": "1.0.0",
         "data": {"invoice_number": "INV-001"},
         "metadata": {"customer_id": "cust_123"},  # your own audit data
     }
@@ -184,13 +170,23 @@ The presigned URL has a 15-minute TTL. If `download_pdf()` fails with `code='DOW
 
 ## Authentication & environments
 
-The mode is determined by the API key prefix:
+An API key belongs to exactly one environment of your organization, and its text names that environment: a key is `pp_{env}_{32 lowercase hex}`, matching
 
-- `pp_test_…` → sandbox mode (not billed, generous rate limits)
-- `pp_live_…` → live mode (billed, production rate limits)
-- `pp_sa_…` → service-account keys; environment matches the SA's configuration (sandbox or live)
+```text
+^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$
+```
 
-All prefixes hit the same endpoint (`https://api.poli.page`). The SDK passes the key through as a Bearer token and never inspects the prefix — pick whichever fits your deploy model.
+The API resolves the environment from the key and renders the project's copy published there; the SDK never sends an environment.
+
+| Environment                           | Key            | Watermark | Counted |
+| ------------------------------------- | -------------- | --------- | ------- |
+| `sandbox` (every org)                 | `pp_sandbox_…` | yes       | no      |
+| `live` (every org, deletable on Pro+) | `pp_live_…`    | no        | yes     |
+| created on Pro+ (e.g. `staging`)      | `pp_staging_…` | no        | yes     |
+
+"Counted" means the render counts toward the organization's monthly PDF quota. `sandbox` renders are watermarked, are not counted, and their documents expire 30 days after creation. There is no watermark option: a template that wants a watermark outside `sandbox` uses the `poli-watermark` class.
+
+Standard and service keys share this one format. Every key hits the same endpoint, `https://api.poli.page` by default or whatever you pass as `base_url` (see [Configuration](#configuration)). The SDK passes the key through as a `Bearer` token and does not check its format.
 
 ### Environment variables
 
@@ -208,12 +204,11 @@ Configure without hard-coding:
 | ------ | ------- | ----------- |
 | `client.render.pdf(input)` | `bytes` | Render a PDF, return bytes |
 | `client.render.pdf_stream(input)` | context manager yielding `bytes` chunks | Render and stream the response |
-| `client.render.preview(input)` | `PreviewResult` | Paginated HTML preview |
 | `client.render.document(input)` | `DocumentDescriptor` | Render and return descriptor (skip auto-download) |
 | `client.documents.get(id)` | `DocumentDescriptor` | Retrieve a stored document |
 | `client.documents.preview(id)` | `DocumentPreviewResult` | Stored document's paginated HTML |
-| `client.documents.thumbnails(id, options)` | `list[Thumbnail]` | Page thumbnails (PNG/JPEG, base64) |
-| `client.documents.delete(id)` | `None` | Soft-delete a stored document |
+| `client.documents.thumbnails(id, options=None)` | `list[Thumbnail]` | Page thumbnails (JPEG/PNG/WebP, base64) |
+| `client.documents.delete(id)` | `None` | Soft-delete a stored document (idempotent) |
 | `render_to_file(client, input, path)` *(from `poli_page.fs`)* | `None` | Render and stream to disk |
 
 Every method above also exists on `AsyncPoliPage` (with `async def` / `await`); helpers are `poli_page.fs.async_render_to_file` and `AsyncDocumentDescriptor.download_pdf` (async).
@@ -222,7 +217,7 @@ Every method above also exists on `AsyncPoliPage` (with `async def` / `await`); 
 
 | Option | Type | Default | Description |
 | ------ | ---- | ------- | ----------- |
-| `api_key` | str | (`POLI_PAGE_API_KEY` env var) | `pp_test_*` or `pp_live_*` API key |
+| `api_key` | str | (`POLI_PAGE_API_KEY` env var) | API key of one environment (`pp_{env}_…`) |
 | `base_url` | str | `https://api.poli.page` | API base URL |
 | `max_retries` | int | 2 | Max retry attempts on retryable errors |
 | `retry_delay` | float (seconds) | 0.5 | Base delay before the first retry |
@@ -240,7 +235,7 @@ When you need different settings for a single call (a longer timeout for a heavy
 ```python
 slow_client = client.with_options(timeout=120.0, max_retries=5)
 pdf = slow_client.render.pdf(
-    {"project": "billing", "template": "yearly-report", "version": "1.0.0", "data": {...}}
+    {"project": "billing", "template": "yearly-report", "data": {...}}
 )
 ```
 
@@ -310,7 +305,7 @@ from poli_page import error_codes
 try:
     client.render.document({...})
 except PoliPageError as err:
-    if err.code == error_codes.PAYMENT_REQUIRED:
+    if err.code == error_codes.ORGANIZATION_PAYMENT_GRACE:
         return show_banner("Subscription has unpaid invoices.")
     if err.code == error_codes.ORGANIZATION_CANCELLED:
         return show_banner("Subscription cancelled — service is read-only.")
@@ -318,8 +313,8 @@ except PoliPageError as err:
         return show_banner("Organization has been purged.")
     if err.code == error_codes.DOCUMENT_NOT_FOUND:
         return show_404()
-    if err.code == error_codes.GONE:
-        return show_410()  # document was soft-deleted
+    if err.code == error_codes.DOCUMENT_GONE:
+        return show_410()  # deleted, or a sandbox document past 30 days
     raise
 ```
 
@@ -331,7 +326,7 @@ Per-call timeout (overrides the client-level `timeout`):
 
 ```python
 pdf = client.render.pdf(
-    {"project": "...", "template": "...", "version": "...", "data": {}, "timeout": 5.0}
+    {"project": "...", "template": "...", "data": {}, "timeout": 5.0}
 )
 ```
 
@@ -370,23 +365,25 @@ from poli_page import PoliPage, RetryEvent, PoliPageError
 
 
 def on_retry(event: RetryEvent) -> None:
-    log.warning(f"retry {event.attempt} after {event.delay_seconds:.3f}s: {event.reason.code}")
+    log.warning(f"retry {event.attempt} after {event.delay_ms:.0f} ms: {event.reason.code}")
 
 
 def on_error(err: PoliPageError) -> None:
     sentry.capture_exception(err)
 
 
-client = PoliPage(api_key="...", on_retry=on_retry, on_error=on_error)
+client = PoliPage(on_retry=on_retry, on_error=on_error)  # reads POLI_PAGE_API_KEY
 ```
 
 For per-HTTP-request hooks, pass your own `httpx.Client` with `event_hooks={...}` to the SDK — that's the httpx-idiomatic path for request/response wiretaps:
 
 ```python
+import os
+
 import httpx
 
 client = PoliPage(
-    api_key="pp_test_...",
+    api_key=os.environ["POLI_PAGE_API_KEY"],
     http_client=httpx.Client(
         event_hooks={
             "request": [lambda req: metrics.inc("poli.request")],
@@ -404,11 +401,11 @@ The SDK retries on **5xx**, **429**, **network errors**, and **timeouts**. Backo
 
 `py.typed` ships in the wheel. Strict-mode-clean against pyright; mypy strict on `src/` is green in CI as well.
 
-`RenderInput` is a union of two `TypedDict`s (`ProjectModeInput` + `InlineModeInput`); the SDK enforces the project-mode-only constraint on `render.pdf` / `pdf_stream` / `document` at runtime in addition to static checks.
+`RenderInput` is the one render input `TypedDict`: `project`, `template` and `data`, plus the optional `format`, `orientation`, `locale`, `metadata`, `idempotency_key` and `timeout`. The request body carries only the documented fields: a key outside that set (such as the removed `version`) is not sent, and a `None` field is left out. Input without a `project` raises `PoliPageError(code="PROJECT_REQUIRED_FOR_DOCUMENT")` before any request.
 
 ## Concurrency & thread-safety
 
-The sync client is thread-safe — share a single instance across threads. The async client (`PoliPageAsync`) is safe to share across asyncio tasks. The client carries no per-request mutable state, so a single instance per process is the expected pattern.
+The sync client is thread-safe — share a single instance across threads. The async client (`AsyncPoliPage`) is safe to share across asyncio tasks. The client carries no per-request mutable state, so a single instance per process is the expected pattern.
 
 ## Runtime support
 
@@ -418,7 +415,7 @@ The sync client is thread-safe — share a single instance across threads. The a
 | PyPy 3.11+ | Untested — should work; httpx is the only runtime dep |
 | Browsers | Not supported (API keys are server-side secrets) |
 
-**Browsers are not supported.** API keys (`pp_test_*`, `pp_live_*`) are secrets and must never be shipped to a browser. Call the SDK from your backend and proxy the result to the client.
+**Browsers are not supported.** API keys (`pp_{env}_…`, whatever the environment) are secrets and must never be shipped to a browser. Call the SDK from your backend and proxy the result to the client.
 
 ## Requirements
 

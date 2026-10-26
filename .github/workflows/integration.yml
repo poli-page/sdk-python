@@ -1,8 +1,10 @@
 name: Integration
 
-# Live-API integration tests. Gated on the repository secret POLI_PAGE_API_KEY
-# (pp_test_*); jobs no-op when unset. Runs on push to main + nightly so PRs
-# stay snappy.
+# Live-API integration tests. Gated on the repository secret POLI_PAGE_API_KEY:
+# a pp_sandbox_ key of an organization whose getting-started project is
+# untouched. Without it the job logs a skip and succeeds. The optional secret
+# POLI_PAGE_TEST_BASE_URL overrides the API host; unset (an empty string here)
+# the SDK default applies. Runs on push to main + nightly so PRs stay snappy.
 
 on:
   push:
@@ -28,7 +30,6 @@ jobs:
       POLI_PAGE_TEST_BASE_URL: ${{ secrets.POLI_PAGE_TEST_BASE_URL }}
       POLI_PAGE_TEST_PROJECT: ${{ vars.POLI_PAGE_TEST_PROJECT || 'getting-started' }}
       POLI_PAGE_TEST_TEMPLATE: ${{ vars.POLI_PAGE_TEST_TEMPLATE || 'welcome' }}
-      POLI_PAGE_TEST_VERSION: ${{ vars.POLI_PAGE_TEST_VERSION || '1.0.0' }}
     steps:
       - uses: actions/checkout@v7
 
