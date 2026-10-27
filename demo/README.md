@@ -46,7 +46,7 @@ Both demos walk the SDK's full surface in this order:
 | 6 | `documents.thumbnails(id, …)` | `thumbs/page_<n>.png` (Starter+ tier; skipped on Free) |
 | 7 | `documents.preview(id)` | `documents_preview.html` |
 | 8 | `documents.delete(id)` | soft-deletes the demo document |
-| 9 | `not-found` | renders template `does-not-exist` with `data={}`, on purpose: the 404 `TEMPLATE_NOT_FOUND` is caught and its `code`, `status`, `message` and `request_id` printed |
+| 9 | `not-found` | renders template `does-not-exist` with `data={}`, on purpose: the 404 `TEMPLATE_NOT_FOUND` is caught and its `code`, `status`, `message` and `request_id` printed; any other error, or a render that succeeds, ends the demo with exit status 1 |
 
 Steps 1 to 8 render `getting-started`/`welcome` with `data={"name": "SDK Demo"}` and no version: the API renders the project's copy published in the key's environment.
 

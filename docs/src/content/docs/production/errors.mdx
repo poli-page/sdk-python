@@ -48,7 +48,7 @@ Returned by the Poli Page API. Uppercase, snake-case. The SDK forwards the code 
   { code: 'MISSING_DATA', when: 'The request body lacks a required `data` field.', recovery: 'Pass `data` (`{}` when the template needs none) on every render call.' },
   { code: 'QUOTA_EXCEEDED', when: 'The organization reached its monthly quota.', recovery: 'Automatically retried; bump tier for sustained higher throughput.' },
   { code: 'RATE_LIMIT_EXCEEDED', when: 'Too many render requests for this key in a short window.', recovery: 'Automatically retried; spread the load.' },
-  { code: 'PUBLISH_IN_PROGRESS', when: 'The project is being published into this environment (503 with `Retry-After`).', recovery: 'Automatically retried after `Retry-After`.' },
+  { code: 'PUBLISH_IN_PROGRESS', when: 'The project is being published into this environment (503 with `Retry-After`).', recovery: 'Automatically retried up to `max_retries` times (default `2`, three attempts in all), each retry waiting `Retry-After` capped at 30 seconds. A publish that outlasts the retries surfaces this error: catch it and retry later.' },
   { code: 'ORGANIZATION_PAYMENT_GRACE', when: 'The organization has unpaid invoices: it is read-only and renders are refused.', recovery: 'Update the payment method in the dashboard.' },
   { code: 'INTERNAL_ERROR', when: 'The API returned 5xx.', recovery: 'Automatically retried; contact support if it persists.' },
 ]} />

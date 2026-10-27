@@ -19,7 +19,8 @@ Outputs land in `demo/output-sync/`:
 
 Step 9 (`not-found`) renders a template that does not exist: the demo catches
 the `PoliPageError` (404 `TEMPLATE_NOT_FOUND`) and prints its fields. The
-script does NOT crash there.
+script does NOT crash there. Any other outcome (another error, or a render
+that succeeds) ends the demo with exit status 1.
 """
 
 from __future__ import annotations
@@ -165,13 +166,18 @@ with PoliPage(api_key=API_KEY, base_url=BASE_URL, on_retry=_on_retry) as client:
     print()
     try:
         client.render.pdf(NOT_FOUND_INPUT)
-        print(c.red("  ✗ unexpected: the call succeeded but should have failed"))
     except PoliPageError as err:
+        if err.status != 404 or err.code != error_codes.TEMPLATE_NOT_FOUND:
+            sys.exit(
+                c.red("  ✗ unexpected error:")
+                + f" expected 404 {error_codes.TEMPLATE_NOT_FOUND!r}, got {err.status} {err.code!r}"
+                + f" (message={err.message!r}, request_id={err.request_id!r})"
+            )
         print(f"  {c.green('✔')} Error caught successfully. PoliPageError exposed:")
         print(f"     code={err.code!r}  status={err.status}")
         print(f"     message={err.message!r}")
         print(f"     request_id={err.request_id!r}")
-        if err.code != error_codes.TEMPLATE_NOT_FOUND:
-            print(c.red(f"  ✗ unexpected code: expected {error_codes.TEMPLATE_NOT_FOUND!r}"))
+    else:
+        sys.exit(c.red("  ✗ unexpected: the call succeeded but should have failed"))
 
 print(f"\n{c.green('✔')} {c.bold('All steps completed.')} Inspect output in {file_link(OUT_DIR)}\n")

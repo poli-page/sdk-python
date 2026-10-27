@@ -55,7 +55,8 @@ authenticated preview are gone. Breaking, with no deprecation window. See
   check a pasted key against the full-key regex only, render `getting-started`/`welcome`
   with no version, drop the `render.preview` step and end with the `not-found` step
   (template `does-not-exist`, `404 TEMPLATE_NOT_FOUND`), which prints the error's `code`,
-  `status`, `message` and `request_id`. Nine steps instead of ten. An empty
+  `status`, `message` and `request_id`; any other error, or a render that succeeds, ends the
+  demo with exit status 1. Nine steps instead of ten. An empty
   `POLI_PAGE_API_KEY` or `POLI_PAGE_BASE_URL` counts as unset.
 - **Integration workflow**: `POLI_PAGE_TEST_VERSION` is gone. The key comes from the
   `POLI_PAGE_API_KEY` secret (a `pp_sandbox_` key) and the optional base URL from the

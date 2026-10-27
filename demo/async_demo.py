@@ -158,14 +158,20 @@ async def main() -> None:
         print()
         try:
             await client.render.pdf(NOT_FOUND_INPUT)
-            print(c.red("  ✗ unexpected: the call succeeded but should have failed"))
         except PoliPageError as err:
+            if err.status != 404 or err.code != error_codes.TEMPLATE_NOT_FOUND:
+                sys.exit(
+                    c.red("  ✗ unexpected error:")
+                    + f" expected 404 {error_codes.TEMPLATE_NOT_FOUND!r},"
+                    + f" got {err.status} {err.code!r}"
+                    + f" (message={err.message!r}, request_id={err.request_id!r})"
+                )
             print(f"  {c.green('✔')} Error caught successfully. PoliPageError exposed:")
             print(f"     code={err.code!r}  status={err.status}")
             print(f"     message={err.message!r}")
             print(f"     request_id={err.request_id!r}")
-            if err.code != error_codes.TEMPLATE_NOT_FOUND:
-                print(c.red(f"  ✗ unexpected code: expected {error_codes.TEMPLATE_NOT_FOUND!r}"))
+        else:
+            sys.exit(c.red("  ✗ unexpected: the call succeeded but should have failed"))
 
     print(
         f"\n{c.green('✔')} {c.bold('All steps completed.')} "
