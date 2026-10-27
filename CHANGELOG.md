@@ -9,7 +9,7 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-10-26
+## [0.10.0] - 2026-10-27
 
 Environments contract: a key carries its environment (`pp_{env}_…`), versions and the
 authenticated preview are gone. Breaking, with no deprecation window. See
