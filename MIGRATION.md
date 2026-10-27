@@ -109,7 +109,7 @@ if err.code == error_codes.ORGANIZATION_PAYMENT_GRACE:
 - `documents.delete(id)` is idempotent: deleting an already-deleted document
   succeeds (`204`).
 
-See [CHANGELOG.md](CHANGELOG.md#0100---2026-10-26) for the full list.
+See [CHANGELOG.md](CHANGELOG.md#0100---2026-10-27) for the full list.
 
 ## 0.9.0
 
