@@ -30,7 +30,7 @@ To pre-populate without the prompt:
 echo 'POLI_PAGE_API_KEY=pp_sandbox_x' > .env   # replace pp_sandbox_x with your full key
 ```
 
-`POLI_PAGE_BASE_URL` (optional, same sources) overrides the API host; the default is `https://api.poli.page`.
+`POLI_PAGE_BASE_URL` (optional, from `os.environ` or `.env`, in that order; never prompted for) overrides the API host; the default is `https://api.poli.page`.
 
 ## What the demos do
 
