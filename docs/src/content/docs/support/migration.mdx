@@ -1,16 +1,26 @@
 ---
 title: Migration
-description: Upgrade guides for moving between major versions of the Python SDK.
+description: Upgrade guides for moving between breaking versions of the Python SDK.
 ---
 
-This page tracks breaking changes between major versions of `poli-page`. For the full per-release diff, see the [changelog](../changelog/).
+This page tracks breaking changes between versions of `poli-page`. For the full per-release diff, see the [changelog](../changelog/).
 
-## v1.0
+## From 0.9.x to 0.10.0
 
-The first stable release. The full v1.0 surface and the renames from the pre-1.0 line are documented in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).
+0.10.0 moves the SDK to the environments contract. It is a breaking change with no deprecation window; while the SDK is on 0.x, a breaking change bumps the minor version. The full guide, with before/after code, is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).
 
-Short version: every render call now goes through a namespace (`render.pdf`, `render.preview`, `render.document`), all PDF-producing methods require project mode, and inline mode is supported only on `render.preview`.
+Short version:
+
+- An API key belongs to one environment and names it: `pp_{env}_…` (`pp_sandbox_…`, `pp_live_…`, `pp_staging_…`). The old test-mode and service-account prefixes are gone: standard and service keys share this one format. See [Authentication](../../concepts/authentication/).
+- There is no `version` input any more: a render uses the project's copy published in the key's environment. `DocumentDescriptor.version` is gone too.
+- The template-preview method and inline-HTML rendering are removed, with their types; previews live in the playground at [play.poli.page](https://play.poli.page). `documents.preview(id)`, the stored HTML of a rendered document, stays.
+- `ProjectModeInput` is renamed `RenderInput`, the only render input type. See [Render input](../../concepts/render-modes/).
+- Removed error codes: `VERSION_NOT_FOUND`, `INVALID_VERSION_FORMAT`, `VERSION_REQUIRED`, `INVALID_VERSION_FOR_KEY_ENV`, `MISSING_PROJECT_OR_TEMPLATE`, `GONE` (now `DOCUMENT_GONE`) and `PAYMENT_REQUIRED` (now `ORGANIZATION_PAYMENT_GRACE`). See [Errors](../../production/errors/).
+
+## 0.9.0
+
+The first public release. Its surface and how it maps to the Node SDK are documented in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).
 
 ## See also
 - [Changelog](../changelog/)
-- [Render modes](../../concepts/render-modes/)
+- [Render input](../../concepts/render-modes/)

@@ -7,7 +7,7 @@ The `PoliPage` and `AsyncPoliPage` constructors accept keyword-only arguments. E
 
 ## Available options
 
-- `api_key` — your `pp_test_` or `pp_live_` key. Required at runtime; falls back to `POLI_PAGE_API_KEY`.
+- `api_key` — an API key of one environment of your organization (`pp_{env}_…`, see [Authentication](../authentication/)). Required at runtime; falls back to `POLI_PAGE_API_KEY`.
 - `base_url` — override the API endpoint. Defaults to `https://api.poli.page` (or `POLI_PAGE_BASE_URL`).
 - `timeout` — per-request timeout in seconds. Defaults to `60.0`.
 - `max_retries` — maximum retry attempts for retryable errors. Defaults to `2` (three total attempts).
@@ -26,7 +26,7 @@ client = PoliPage(
     timeout=30.0,
     max_retries=3,
     retry_delay=0.25,
-    on_retry=lambda event: print(f"retry {event.attempt} in {event.delay_seconds:.2f}s"),
+    on_retry=lambda event: print(f"retry {event.attempt} in {event.delay_ms:.0f} ms"),
     on_error=lambda err: print(f"failed: {err.code}"),
 )
 ```

@@ -1,15 +1,37 @@
 ---
 title: Authentication
-description: How the Poli Page SDK authenticates with the API using test or live keys.
+description: How the Poli Page Python SDK authenticates with the API, and how a key selects its environment.
 ---
 
 import ApiKeyCallout from '@preset/components/ApiKeyCallout.astro';
 
-The Poli Page Python SDK authenticates every request with a bearer token. The key prefix determines which environment the request hits.
+The Poli Page Python SDK authenticates every request with a bearer token. An API key belongs to exactly one environment of your organization, and the API renders the project's copy published in that environment.
 
 ## API keys
 
 <ApiKeyCallout />
+
+A key's text names its environment: a key is `pp_{env}_{32 lowercase hex}`, matching
+
+```text
+^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$
+```
+
+Standard and service keys share this one format. The SDK passes the key through as-is and does not check its format; it never sends an environment either, because the API resolves it from the key.
+
+## Environments
+
+| Environment                           | Key            | Watermark | Counted |
+| ------------------------------------- | -------------- | --------- | ------- |
+| `sandbox` (every org)                 | `pp_sandbox_…` | yes       | no      |
+| `live` (every org, deletable on Pro+) | `pp_live_…`    | no        | yes     |
+| created on Pro+ (e.g. `staging`)      | `pp_staging_…` | no        | yes     |
+
+"Counted" means the render counts toward the organization's monthly PDF quota. `sandbox` renders are watermarked, are not counted, and their documents expire 30 days after creation. There is no watermark option: a template that wants a watermark outside `sandbox` uses the `poli-watermark` class.
+
+Every key hits the same endpoint, `https://api.poli.page` by default or whatever you pass as `base_url` (see [Configuration](../configuration/)).
+
+## Passing the key
 
 Pass the key to the client constructor, or let the SDK pick it up from `POLI_PAGE_API_KEY`:
 
