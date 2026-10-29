@@ -62,7 +62,7 @@ RENDER_RESPONSE: dict[str, object] = {
 @pytest.fixture(autouse=True)
 def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     """Disable `time.sleep` for retry tests — they assert delays via spies."""
-    monkeypatch.setattr("poli_page._client.time.sleep", lambda _s: None)
+    monkeypatch.setattr("poli_page._client.sleep_at_least", lambda _s: None)
 
 
 class TestConstructor:
@@ -621,7 +621,7 @@ class TestRetryLoop:
     @respx.mock
     def test_retry_after_seconds_honored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
-        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._client.sleep_at_least", lambda s: sleeps.append(s))
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "0"}),
             httpx.Response(200, json=RENDER_RESPONSE),
@@ -642,7 +642,7 @@ class TestRetryLoop:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         sleeps: list[float] = []
-        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._client.sleep_at_least", lambda s: sleeps.append(s))
         responses = [
             httpx.Response(
                 503, json={"error": "PUBLISH_IN_PROGRESS"}, headers={"Retry-After": "1"}
@@ -661,7 +661,7 @@ class TestRetryLoop:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         sleeps: list[float] = []
-        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._client.sleep_at_least", lambda s: sleeps.append(s))
         route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(
                 503,
@@ -681,7 +681,7 @@ class TestRetryLoop:
     @respx.mock
     def test_retry_after_capped_at_30(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
-        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._client.sleep_at_least", lambda s: sleeps.append(s))
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "999"}),
             httpx.Response(200, json=RENDER_RESPONSE),
@@ -701,7 +701,7 @@ class TestRetryLoop:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         sleeps: list[float] = []
-        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._client.sleep_at_least", lambda s: sleeps.append(s))
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "9" * 400}),
             httpx.Response(200, json=RENDER_RESPONSE),
@@ -714,7 +714,7 @@ class TestRetryLoop:
     @respx.mock
     def test_retry_after_ms_is_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
-        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._client.sleep_at_least", lambda s: sleeps.append(s))
         responses = [
             httpx.Response(
                 503,
@@ -736,7 +736,7 @@ class TestRetryLoop:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         sleeps: list[float] = []
-        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._client.sleep_at_least", lambda s: sleeps.append(s))
         monkeypatch.setattr("poli_page._transport.random.random", lambda: 0.5)
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After-Ms": "5000"}),

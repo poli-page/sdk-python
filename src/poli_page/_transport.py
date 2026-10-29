@@ -8,8 +8,10 @@ without HTTP — port of sdk-node/src/internal/http.ts.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import random
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -139,6 +141,21 @@ def compute_backoff(attempt: int, base_delay: float, retry_after: float | None) 
     exp = base_delay * (2 ** (attempt - 1))
     jitter_factor = 0.5 + random.random()
     return exp * jitter_factor
+
+
+def sleep_at_least(seconds: float) -> None:
+    """Sleep `seconds`, sleeping again if the clock woke early, so a retry wait
+    is never shorter than asked."""
+    end = time.monotonic() + seconds
+    while (left := end - time.monotonic()) > 0:
+        time.sleep(left)
+
+
+async def async_sleep_at_least(seconds: float) -> None:
+    """The asyncio form of `sleep_at_least`."""
+    end = time.monotonic() + seconds
+    while (left := end - time.monotonic()) > 0:
+        await asyncio.sleep(left)
 
 
 # ---------------------------------------------------------------------------

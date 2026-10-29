@@ -50,6 +50,7 @@ from poli_page._transport import (
     mask_api_key,
     parse_error_body,
     parse_retry_after,
+    sleep_at_least,
     timeout_message,
 )
 from poli_page._version import __version__
@@ -242,7 +243,7 @@ class PoliPage:
                 delay = compute_backoff(attempt, self.retry_delay, next_retry_after)
                 assert last_error is not None  # always set when attempt > 0
                 self._fire_retry(attempt + 1, delay, last_error)
-                time.sleep(delay)
+                sleep_at_least(delay)
 
             outcome = self._send_once(method, path, body, idempotency_key, attempt + 1, timeout)
             if outcome.response is not None:

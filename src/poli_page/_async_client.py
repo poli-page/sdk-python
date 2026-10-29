@@ -10,7 +10,6 @@ Hooks (`on_retry`, `on_error`) remain sync callables — mirror Node.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import time
@@ -46,6 +45,7 @@ from poli_page._errors import (
 )
 from poli_page._transport import (
     HttpMethod,
+    async_sleep_at_least,
     build_headers,
     build_url,
     compute_backoff,
@@ -235,7 +235,7 @@ class AsyncPoliPage:
                 delay = compute_backoff(attempt, self.retry_delay, next_retry_after)
                 assert last_error is not None
                 self._fire_retry(attempt + 1, delay, last_error)
-                await asyncio.sleep(delay)
+                await async_sleep_at_least(delay)
 
             outcome = await self._send_once(
                 method, path, body, idempotency_key, attempt + 1, timeout
