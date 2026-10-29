@@ -16,6 +16,25 @@ DEFAULT_RETRY_DELAY_SECONDS = 0.5
 DEFAULT_TIMEOUT_SECONDS = 60.0
 RETRY_AFTER_CAP_SECONDS = 30.0
 
+# Retry policy (SDK spec §9.1) ----------------------------------------------
+
+# Never retried, even on a 429 / 5xx with `Retry-After`: they last until the
+# monthly reset or until the bucket access is restored, so waiting cannot help.
+NON_RETRYABLE_CODES: frozenset[str] = frozenset(
+    {"QUOTA_EXCEEDED", "OVERAGE_CAP_EXCEEDED", "STORAGE_ACCESS_DENIED"}
+)
+
+# SDK-side error messages (SDK spec §8.3) -----------------------------------
+# Exact texts, the same in every Poli Page SDK. `{timeoutMs}` is the attempt's
+# timeout in milliseconds, `{status}` the storage status of a failed download.
+
+MESSAGE_INVALID_OPTIONS = "apiKey is required"
+MESSAGE_NETWORK_ERROR = "Network request failed"
+MESSAGE_TIMEOUT = "Request timed out after {timeoutMs}ms"
+MESSAGE_DOWNLOAD_FAILED = "Failed to download PDF: HTTP {status}"
+MESSAGE_DOWNLOAD_FAILED_NETWORK = "Failed to download PDF: network error"
+MESSAGE_PROJECT_REQUIRED = "project is required"
+
 # Headers ---------------------------------------------------------------
 
 USER_AGENT_PREFIX = "poli-page-sdk-python"
@@ -27,7 +46,6 @@ HEADER_USER_AGENT = "User-Agent"
 HEADER_IDEMPOTENCY_KEY = "Idempotency-Key"
 HEADER_REQUEST_ID = "x-request-id"
 HEADER_RETRY_AFTER = "Retry-After"
-HEADER_RETRY_AFTER_MS = "Retry-After-Ms"
 HEADER_DOCUMENT_PAGE_COUNT = "X-Document-Page-Count"
 
 CONTENT_TYPE_JSON = "application/json"

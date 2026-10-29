@@ -53,6 +53,14 @@ class TestParseRetryAfter:
         assert parse_retry_after("abc") is None
         assert parse_retry_after("not a date") is None
 
+    def test_only_integer_seconds_are_read_as_seconds(self) -> None:
+        # SDK spec §9.2: integer seconds or an HTTP-date; anything else is unparseable.
+        assert parse_retry_after("1.5") is None
+        assert parse_retry_after("-1") is None
+        assert parse_retry_after("nan") is None
+        assert parse_retry_after("inf") is None
+        assert parse_retry_after(" 2 ") == 2.0
+
     def test_past_http_date_returns_zero(self) -> None:
         past = datetime.now(UTC) - timedelta(seconds=60)
         assert parse_retry_after(_http_date(past)) == 0.0
@@ -137,10 +145,7 @@ class TestParseErrorBody:
 
     def test_internal_error_when_body_not_valid_json(self) -> None:
         result = parse_error_body("not json", status=502)
-        assert result == {
-            "code": "INTERNAL_ERROR",
-            "message": "HTTP 502: response body was not valid JSON",
-        }
+        assert result == {"code": "INTERNAL_ERROR", "message": "HTTP 502"}
 
     def test_internal_error_for_html_error_pages(self) -> None:
         result = parse_error_body("<html>upstream gone</html>", status=502)

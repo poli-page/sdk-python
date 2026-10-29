@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from poli_page._constants import NON_RETRYABLE_CODES
+
 if TYPE_CHECKING:
     import httpx
 
@@ -48,23 +50,38 @@ class PoliPageError(Exception):
         self.request_id = request_id
         self.response = response
 
-    # Predicate helpers (plan §7.1) — kept for spec parity. Idiomatic
-    # Python uses `isinstance(err, RateLimitError)` etc.
+    # Predicate helpers (SDK spec §8.1), the same in every Poli Page SDK. They
+    # read `status` and `code`, so they also hold for an error that is not one
+    # of the HTTP-status subclasses (a `DOWNLOAD_FAILED` with the storage's 403
+    # is an auth error). Idiomatic Python can use `isinstance(err, RateLimitError)`.
 
     def is_auth_error(self) -> bool:
-        return isinstance(self, (AuthenticationError, PermissionDeniedError))
+        """`status` is 401 or 403."""
+        return self.status in (401, 403)
 
     def is_rate_limit_error(self) -> bool:
-        return isinstance(self, RateLimitError)
+        """`status` is 429."""
+        return self.status == 429
 
     def is_validation_error(self) -> bool:
-        return isinstance(self, BadRequestError)
+        """`status` is 400."""
+        return self.status == 400
 
     def is_network_error(self) -> bool:
-        return isinstance(self, APIConnectionError)
+        """`code` is `network_error` or `timeout`."""
+        return self.code in ("network_error", "timeout")
 
     def is_retryable(self) -> bool:
-        return isinstance(self, (APIConnectionError, RateLimitError, InternalServerError))
+        """A network error, a timeout, a 5xx or a 429 the SDK retries (SDK spec §9.1).
+
+        `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED` are
+        never retryable: waiting cannot fix them.
+        """
+        if self.code in NON_RETRYABLE_CODES:
+            return False
+        if self.is_network_error():
+            return True
+        return self.status is not None and (self.status >= 500 or self.status == 429)
 
     def to_payload(self) -> dict[str, Any]:
         """Canonical wire payload for framework integrations.
@@ -139,7 +156,11 @@ class UnprocessableEntityError(APIStatusError):
 
 
 class RateLimitError(APIStatusError):
-    """HTTP 429 — quota or overage cap exceeded."""
+    """HTTP 429 — rate limit, quota or overage cap exceeded.
+
+    `RATE_LIMIT_EXCEEDED` is retried; `QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED`
+    are not (`is_retryable()` is `False` for them).
+    """
 
 
 class InternalServerError(APIStatusError):

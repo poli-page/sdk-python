@@ -22,6 +22,9 @@ from poli_page._constants import (
     HEADER_CONTENT_TYPE,
     HEADER_IDEMPOTENCY_KEY,
     HEADER_USER_AGENT,
+    MESSAGE_DOWNLOAD_FAILED,
+    MESSAGE_DOWNLOAD_FAILED_NETWORK,
+    MESSAGE_TIMEOUT,
     RETRY_AFTER_CAP_SECONDS,
 )
 
@@ -97,22 +100,20 @@ def mask_api_key(api_key: str) -> str:
 
 
 def parse_retry_after(header_value: str | None) -> float | None:
-    """Parse a `Retry-After` header into seconds, capped at `RETRY_AFTER_CAP_SECONDS`.
+    """Parse a `Retry-After` header into seconds, clamped to 0-`RETRY_AFTER_CAP_SECONDS`.
 
-    Accepts integer seconds or an HTTP-date. Returns `None` for missing or
-    unparseable values. Past dates clamp to 0.
+    Accepts integer seconds or an HTTP-date (RFC 9110 §10.2.3). Returns `None`
+    for a missing or unparseable value, so the backoff applies. A date in the
+    past gives 0.
     """
     if not header_value:
         return None
+    value = header_value.strip()
+    if value.isascii() and value.isdigit():
+        return min(float(int(value)), RETRY_AFTER_CAP_SECONDS)
     try:
-        seconds = float(header_value)
-    except ValueError:
-        seconds = None
-    if seconds is not None:
-        return min(max(seconds, 0.0), RETRY_AFTER_CAP_SECONDS)
-    try:
-        dt = parsedate_to_datetime(header_value)
-    except (TypeError, ValueError):
+        dt = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError):
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
@@ -141,13 +142,13 @@ def compute_backoff(attempt: int, base_delay: float, retry_after: float | None) 
 
 
 def parse_error_body(body: str, *, status: int) -> dict[str, str]:
-    """Parse a non-2xx response body into `{code, message}`.
+    """Parse a non-2xx response body into `{code, message}` (SDK spec §8.2).
 
-    The API speaks RFC 7807 ProblemDetails. Message preference: `detail`
-    (specific reason) → `title` (generic problem name) → `message` (legacy
-    non-7807 endpoints) → short canned `HTTP <status>`. The code is whatever
-    the API sends verbatim; we never invent one from the message. Bodies
-    that aren't valid JSON objects surface as `INTERNAL_ERROR`.
+    Code: the body's `code`, else `error`, else `unknown_error`, copied
+    verbatim; the SDK never infers one from the status or the message.
+    Message: `detail`, else `title`, else `message`, else `HTTP <status>`.
+    A body that is not a JSON object gives `INTERNAL_ERROR` and `HTTP <status>`;
+    the caller keeps the real status.
     """
     try:
         raw = json.loads(body)
@@ -164,10 +165,24 @@ def parse_error_body(body: str, *, status: int) -> dict[str, str]:
 
 
 def _internal_error(status: int) -> dict[str, str]:
-    return {
-        "code": "INTERNAL_ERROR",
-        "message": f"HTTP {status}: response body was not valid JSON",
-    }
+    return {"code": "INTERNAL_ERROR", "message": f"HTTP {status}"}
+
+
+# ---------------------------------------------------------------------------
+# SDK-side error messages (SDK spec §8.3)
+# ---------------------------------------------------------------------------
+
+
+def timeout_message(timeout_seconds: float) -> str:
+    """`Request timed out after {timeoutMs}ms`, for the attempt's timeout."""
+    return MESSAGE_TIMEOUT.format(timeoutMs=round(timeout_seconds * 1000))
+
+
+def download_failed_message(status: int | None) -> str:
+    """The `DOWNLOAD_FAILED` message: with the storage status, or the network one."""
+    if status is None:
+        return MESSAGE_DOWNLOAD_FAILED_NETWORK
+    return MESSAGE_DOWNLOAD_FAILED.format(status=status)
 
 
 # ---------------------------------------------------------------------------

@@ -71,6 +71,24 @@ class TestIsAuthError:
         assert APIConnectionError("m", code="network_error").is_auth_error() is False
 
 
+class TestPredicatesReadStatusAndCode:
+    """SDK spec §8.1: the helpers read `status` and `code`, whatever the subclass."""
+
+    def test_download_failed_with_storage_403_is_an_auth_error(self) -> None:
+        err = PoliPageError("Failed to download PDF: HTTP 403", code="DOWNLOAD_FAILED", status=403)
+        assert err.is_auth_error() is True
+        assert err.is_network_error() is False
+
+    def test_download_failed_network_error_is_not_a_network_error(self) -> None:
+        err = PoliPageError("Failed to download PDF: network error", code="DOWNLOAD_FAILED")
+        assert err.is_network_error() is False
+        assert err.is_retryable() is False
+
+    def test_unmapped_status_reads_status(self) -> None:
+        err = APIStatusError("m", code="X", status=400)
+        assert err.is_validation_error() is True
+
+
 class TestIsRateLimitError:
     def test_true_for_429(self) -> None:
         assert RateLimitError("m", code="QUOTA_EXCEEDED", status=429).is_rate_limit_error()
@@ -107,7 +125,25 @@ class TestIsRetryable:
         assert InternalServerError("m", code="INTERNAL_ERROR", status=502).is_retryable()
 
     def test_true_for_429(self) -> None:
-        assert RateLimitError("m", code="QUOTA_EXCEEDED", status=429).is_retryable()
+        assert RateLimitError("m", code="RATE_LIMIT_EXCEEDED", status=429).is_retryable()
+
+    @pytest.mark.parametrize(
+        ("status", "code"),
+        [
+            (429, "QUOTA_EXCEEDED"),
+            (429, "OVERAGE_CAP_EXCEEDED"),
+            (502, "STORAGE_ACCESS_DENIED"),
+        ],
+    )
+    def test_false_for_the_never_retried_codes(self, status: int, code: str) -> None:
+        # SDK spec §9.1: waiting cannot fix them.
+        assert classify(status=status, code=code, message="m", request_id=None).is_retryable() is (
+            False
+        )
+
+    def test_false_for_a_download_failure_with_a_storage_status(self) -> None:
+        err = PoliPageError("Failed to download PDF: HTTP 403", code="DOWNLOAD_FAILED", status=403)
+        assert err.is_retryable() is False
 
     def test_true_for_network_and_timeout(self) -> None:
         assert APIConnectionError("m", code="network_error").is_retryable()

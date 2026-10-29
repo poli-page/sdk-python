@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterator
 from typing import TYPE_CHECKING, Any, cast
 
-from poli_page._constants import PATH_RENDER
+from poli_page._constants import MESSAGE_PROJECT_REQUIRED, PATH_RENDER
 from poli_page._errors import PoliPageError
 from poli_page._transport import RENDER_WIRE_FIELDS, from_wire, to_wire
 from poli_page.types import (
@@ -112,10 +112,7 @@ def _require_project_mode(input: RenderInput) -> None:
     SDK fails fast without an HTTP round trip.
     """
     if not input.get("project"):
-        raise PoliPageError(
-            "project is required for render.pdf / render.pdf_stream / render.document.",
-            code="PROJECT_REQUIRED_FOR_DOCUMENT",
-        )
+        raise PoliPageError(MESSAGE_PROJECT_REQUIRED, code="PROJECT_REQUIRED_FOR_DOCUMENT")
 
 
 def _descriptor_init_kwargs(raw: dict[str, Any]) -> dict[str, Any]:

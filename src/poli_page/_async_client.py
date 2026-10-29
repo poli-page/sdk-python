@@ -33,8 +33,8 @@ from poli_page._constants import (
     DEFAULT_TIMEOUT_SECONDS,
     HEADER_REQUEST_ID,
     HEADER_RETRY_AFTER,
-    HEADER_RETRY_AFTER_MS,
-    RETRY_AFTER_CAP_SECONDS,
+    MESSAGE_INVALID_OPTIONS,
+    MESSAGE_NETWORK_ERROR,
     USER_AGENT_PREFIX,
 )
 from poli_page._errors import (
@@ -49,9 +49,11 @@ from poli_page._transport import (
     build_headers,
     build_url,
     compute_backoff,
+    download_failed_message,
     mask_api_key,
     parse_error_body,
     parse_retry_after,
+    timeout_message,
 )
 from poli_page._version import __version__
 
@@ -108,7 +110,7 @@ class AsyncPoliPage:
         resolved_key = api_key or os.environ.get("POLI_PAGE_API_KEY")
         if not resolved_key:
             raise PoliPageError(
-                "api_key is required (pass api_key= or set POLI_PAGE_API_KEY)",
+                MESSAGE_INVALID_OPTIONS,
                 code="invalid_options",
             )
 
@@ -280,13 +282,13 @@ class AsyncPoliPage:
             response = await self._http_client.request(method, url, **_kwargs)
         except httpx.TimeoutException as exc:
             timeout_err = APITimeoutError(
-                f"Request timed out after {self.timeout}s",
+                timeout_message(timeout if timeout is not None else self.timeout),
                 code="timeout",
             )
             timeout_err.__cause__ = exc
             return _Attempt(response=None, error=timeout_err, retryable=True, retry_after=None)
         except httpx.HTTPError as exc:
-            conn_err = APIConnectionError(str(exc) or type(exc).__name__, code="network_error")
+            conn_err = APIConnectionError(MESSAGE_NETWORK_ERROR, code="network_error")
             conn_err.__cause__ = exc
             return _Attempt(response=None, error=conn_err, retryable=True, retry_after=None)
 
@@ -296,9 +298,6 @@ class AsyncPoliPage:
             return _Attempt(response=response, error=None, retryable=False, retry_after=None)
 
         request_id = response.headers.get(HEADER_REQUEST_ID)
-        retryable = response.status_code >= 500 or response.status_code == 429
-        retry_after = self._extract_retry_after(response.headers) if retryable else None
-
         parsed = parse_error_body(response.text, status=response.status_code)
         status_err: APIStatusError = classify(
             status=response.status_code,
@@ -306,6 +305,12 @@ class AsyncPoliPage:
             message=parsed["message"],
             request_id=request_id,
             response=response,
+        )
+        # SDK spec §9.1: 5xx and 429 are retried, except the never-retried codes.
+        retryable = status_err.is_retryable()
+        # §9.2: only `Retry-After` is read; `Retry-After-Ms` is ignored.
+        retry_after = (
+            parse_retry_after(response.headers.get(HEADER_RETRY_AFTER)) if retryable else None
         )
         return _Attempt(
             response=None, error=status_err, retryable=retryable, retry_after=retry_after
@@ -319,13 +324,10 @@ class AsyncPoliPage:
         try:
             response = await self._http_client.get(url)
         except httpx.HTTPError as exc:
-            raise PoliPageError(
-                str(exc) or type(exc).__name__,
-                code="DOWNLOAD_FAILED",
-            ) from exc
+            raise PoliPageError(download_failed_message(None), code="DOWNLOAD_FAILED") from exc
         if not response.is_success:
             raise PoliPageError(
-                f"Failed to download PDF: {response.status_code}",
+                download_failed_message(response.status_code),
                 code="DOWNLOAD_FAILED",
                 status=response.status_code,
             )
@@ -337,26 +339,13 @@ class AsyncPoliPage:
             async with self._http_client.stream("GET", url) as response:
                 if not response.is_success:
                     raise PoliPageError(
-                        f"Failed to download PDF: {response.status_code}",
+                        download_failed_message(response.status_code),
                         code="DOWNLOAD_FAILED",
                         status=response.status_code,
                     )
                 yield response.aiter_bytes()
         except httpx.HTTPError as exc:
-            raise PoliPageError(
-                str(exc) or type(exc).__name__,
-                code="DOWNLOAD_FAILED",
-            ) from exc
-
-    @staticmethod
-    def _extract_retry_after(headers: httpx.Headers) -> float | None:
-        ms_value = headers.get(HEADER_RETRY_AFTER_MS)
-        if ms_value:
-            try:
-                return min(max(float(ms_value) / 1000.0, 0.0), RETRY_AFTER_CAP_SECONDS)
-            except ValueError:
-                pass
-        return parse_retry_after(headers.get(HEADER_RETRY_AFTER))
+            raise PoliPageError(download_failed_message(None), code="DOWNLOAD_FAILED") from exc
 
     # ------------------------------------------------------------------
     # Hooks — sync callables; mirror the sync client (plan §10.3).

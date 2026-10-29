@@ -251,8 +251,10 @@ class TestErrorMapping:
         async with AsyncPoliPage(
             api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0
         ) as client:
-            with pytest.raises(APIConnectionError):
+            with pytest.raises(APIConnectionError) as excinfo:
                 await client.render.document(RENDER_INPUT)
+        assert excinfo.value.message == "Network request failed"
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
 
     @respx.mock
     async def test_timeout(self) -> None:
@@ -260,10 +262,12 @@ class TestErrorMapping:
             side_effect=httpx.ReadTimeout("read timed out")
         )
         async with AsyncPoliPage(
-            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0, timeout=0.15
         ) as client:
-            with pytest.raises(APITimeoutError):
+            with pytest.raises(APITimeoutError) as excinfo:
                 await client.render.document(RENDER_INPUT)
+        assert excinfo.value.message == "Request timed out after 150ms"
+        assert isinstance(excinfo.value.__cause__, httpx.ReadTimeout)
 
 
 class TestRetryLoop:
@@ -361,7 +365,7 @@ class TestRetryLoop:
         assert sleeps == [1.0] * DEFAULT_MAX_RETRIES
 
     @respx.mock
-    async def test_retry_after_ms_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_retry_after_ms_is_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
 
         async def _track(s: float) -> None:
@@ -384,7 +388,30 @@ class TestRetryLoop:
             retry_delay=10.0,
         ) as client:
             await client.render.document(RENDER_INPUT)
-        assert sleeps == [0.25]
+        # SDK spec §9.2: only Retry-After is read.
+        assert sleeps == [5.0]
+
+    @respx.mock
+    @pytest.mark.parametrize(
+        ("status", "code"),
+        [
+            (429, "QUOTA_EXCEEDED"),
+            (429, "OVERAGE_CAP_EXCEEDED"),
+            (502, "STORAGE_ACCESS_DENIED"),
+        ],
+    )
+    async def test_never_retried_codes_raise_at_once(self, status: int, code: str) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(status, json={"error": code}, headers={"Retry-After": "1"})
+        )
+        async with AsyncPoliPage(
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2
+        ) as client:
+            with pytest.raises(PoliPageError) as excinfo:
+                await client.render.document(RENDER_INPUT)
+        assert route.call_count == 1
+        assert excinfo.value.code == code
+        assert excinfo.value.is_retryable() is False
 
 
 class TestHooks:
@@ -477,7 +504,7 @@ class TestHooks:
     ) -> None:
         events: list[RetryEvent] = []
         responses = [
-            httpx.Response(503, json={"code": "down"}, headers={"Retry-After-Ms": "250"}),
+            httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "1"}),
             httpx.Response(200, json=RENDER_RESPONSE),
         ]
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
@@ -490,7 +517,7 @@ class TestHooks:
         ) as client:
             await client.render.document(RENDER_INPUT)
         assert len(events) == 1
-        assert events[0].delay_ms == 250.0
+        assert events[0].delay_ms == 1000.0
 
     @respx.mock
     async def test_on_error_fires_on_terminal_failure(self) -> None:
