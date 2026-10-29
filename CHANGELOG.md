@@ -68,6 +68,8 @@ Conformance with the Poli Page API contract v1.1.0
 
 ### Added
 
+- Known error code `TEMPLATE_UNSAFE` (400): the template, a partial or an SVG asset holds an
+  injection attempt; `detail` names it. Not retried.
 - `tests/test_contract.py` runs every SDK case of the API contract against a local mock server,
   with both `PoliPage` and `AsyncPoliPage`; CI pins the contract by commit
   (`poli-page/api-contract` action) and Dependabot proposes each new version. Run it locally

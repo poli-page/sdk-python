@@ -236,7 +236,7 @@ class TestClassify:
 
 
 class TestErrorCodes:
-    # The 31 API codes of the environments contract, each exposed as a constant
+    # The 32 API codes of the environments contract, each exposed as a constant
     # whose value is its own name.
     API_CODES: frozenset[str] = frozenset(
         {
@@ -268,6 +268,7 @@ class TestErrorCodes:
             "ORGANIZATION_MIGRATING",
             "PROJECT_NOT_FOUND",
             "TEMPLATE_ERROR",
+            "TEMPLATE_UNSAFE",
             "THUMBNAILS_NOT_AVAILABLE",
             "RATE_LIMIT_EXCEEDED",
             "RENDER_BODY_TOO_LARGE",
@@ -277,7 +278,7 @@ class TestErrorCodes:
     )
 
     def test_known_api_codes_exposed(self) -> None:
-        assert len(self.API_CODES) == 31
+        assert len(self.API_CODES) == 32
         for code in self.API_CODES:
             assert getattr(error_codes, code) == code
 
