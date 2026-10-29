@@ -73,6 +73,16 @@ class TestConstructor:
             AsyncPoliPage()
         assert excinfo.value.code == "invalid_options"
 
+    def test_empty_string_api_key_raises_even_with_env_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # SDK spec §4.1: the environment variable stands in only for an omitted key.
+        monkeypatch.setenv("POLI_PAGE_API_KEY", "pp_sandbox_from_env")
+        with pytest.raises(PoliPageError) as excinfo:
+            AsyncPoliPage(api_key="")
+        assert excinfo.value.code == "invalid_options"
+        assert excinfo.value.message == "apiKey is required"
+
     def test_picks_up_api_key_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("POLI_PAGE_API_KEY", "pp_sandbox_from_env")
         client = AsyncPoliPage()

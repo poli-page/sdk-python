@@ -194,7 +194,7 @@ Configure without hard-coding:
 
 | Variable | Purpose |
 | -------- | ------- |
-| `POLI_PAGE_API_KEY` | Used when `api_key=` is omitted on the constructor |
+| `POLI_PAGE_API_KEY` | Used when `api_key=` is omitted (or `None`) on the constructor; an explicit `api_key=""` raises `invalid_options` |
 | `POLI_PAGE_BASE_URL` | Used when `base_url=` is omitted (default `https://api.poli.page`) |
 | `POLI_PAGE_LOG` | `debug` / `info` / `warning` / `error` — sets the `poli_page` logger level on import |
 

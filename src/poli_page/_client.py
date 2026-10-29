@@ -108,7 +108,9 @@ class PoliPage:
         on_error: Any = None,
         http_client: httpx.Client | None = None,
     ) -> None:
-        resolved_key = api_key or os.environ.get("POLI_PAGE_API_KEY")
+        # SDK spec §4.1: a missing or empty key raises. The environment variable
+        # stands in only for an omitted key, never for an explicit empty one.
+        resolved_key = api_key if api_key is not None else os.environ.get("POLI_PAGE_API_KEY")
         if not resolved_key:
             raise PoliPageError(
                 MESSAGE_INVALID_OPTIONS,
@@ -173,7 +175,7 @@ class PoliPage:
         unless one is injected explicitly.
         """
         return PoliPage(
-            api_key=api_key or self._api_key,
+            api_key=api_key if api_key is not None else self._api_key,
             base_url=base_url if base_url is not None else self.base_url,
             max_retries=max_retries if max_retries is not None else self.max_retries,
             retry_delay=retry_delay if retry_delay is not None else self.retry_delay,

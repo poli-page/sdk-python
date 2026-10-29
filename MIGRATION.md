@@ -33,6 +33,19 @@ except PoliPageError as err:
         requeue(job)
 ```
 
+### An empty `api_key` raises
+
+`PoliPage(api_key="")` raises `invalid_options` even when `POLI_PAGE_API_KEY`
+is set. Pass `api_key=None` (or omit it) to read the environment variable.
+
+```python
+# 0.10.0: an empty value silently fell back to POLI_PAGE_API_KEY
+client = PoliPage(api_key=os.environ.get("MY_KEY", ""))
+
+# next release
+client = PoliPage(api_key=os.environ.get("MY_KEY"))  # None -> POLI_PAGE_API_KEY
+```
+
 ### `Retry-After-Ms` is ignored
 
 Only `Retry-After` (integer seconds or an HTTP-date, clamped to 30 s) sets the
