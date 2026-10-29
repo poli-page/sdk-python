@@ -30,7 +30,7 @@ These originate inside the SDK before any HTTP call (or in response to a network
   { code: 'invalid_options', when: 'The arguments passed to the PoliPage constructor are invalid (missing api_key, malformed base_url, etc.). The message is `apiKey is required`.', recovery: 'Fix the constructor call. Raised synchronously.' },
   { code: 'network_error', when: 'TCP/TLS-layer failure reaching the API. The message is `Network request failed`; the httpx exception is the `__cause__`.', recovery: 'Automatically retried up to max_retries times.' },
   { code: 'timeout', when: 'The request did not complete within the configured `timeout`. The message is `Request timed out after <ms>ms`.', recovery: 'Automatically retried up to max_retries times. Raise `timeout` if it keeps tripping.' },
-  { code: 'DOWNLOAD_FAILED', when: 'The S3 second-hop download (after `render.pdf` / `render.pdf_stream`) failed: `Failed to download PDF: HTTP <status>` with the storage `status` (an expired URL gets 403), or `Failed to download PDF: network error` without one, also when the connection drops while the body is read.', recovery: 'Re-fetch the descriptor via documents.get(id) — presigned URLs expire after 15 minutes.' },
+  { code: 'DOWNLOAD_FAILED', when: 'The S3 second-hop download (after `render.pdf` / `render.pdf_stream`) failed: `Failed to download PDF: HTTP <status>` with the storage `status` (an expired URL gets 403), or `Failed to download PDF: network error` without one, also when the connection drops while the body is read.', recovery: 'Never retryable, whatever the storage status (`is_retryable()` is `False`). Re-fetch the descriptor via documents.get(id) — presigned URLs expire after 15 minutes.' },
 ]} />
 
 ## API codes

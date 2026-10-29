@@ -18,6 +18,10 @@ from poli_page._constants import NON_RETRYABLE_CODES
 if TYPE_CHECKING:
     import httpx
 
+# An SDK code, not an API answer code: kept out of `NON_RETRYABLE_CODES`, which mirrors the
+# contract's `policy.nonRetryableCodes`.
+_DOWNLOAD_FAILED = "DOWNLOAD_FAILED"
+
 
 class PoliPageError(Exception):
     """Base class for every error raised by the SDK.
@@ -75,9 +79,12 @@ class PoliPageError(Exception):
         """A network error, a timeout, a 5xx or a 429 the SDK retries (SDK spec §9.1).
 
         `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED` are
-        never retryable: waiting cannot fix them.
+        never retryable: waiting cannot fix them. Neither is `DOWNLOAD_FAILED`,
+        whatever the storage status (contract rule R-DOWNLOAD-NONRETRY).
         """
         if self.code in NON_RETRYABLE_CODES:
+            return False
+        if self.code == _DOWNLOAD_FAILED:
             return False
         if self.is_network_error():
             return True

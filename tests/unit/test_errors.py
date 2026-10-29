@@ -145,6 +145,19 @@ class TestIsRetryable:
         err = PoliPageError("Failed to download PDF: HTTP 403", code="DOWNLOAD_FAILED", status=403)
         assert err.is_retryable() is False
 
+    @pytest.mark.parametrize("status", [503, 429])
+    def test_download_failed_is_never_retryable_whatever_the_storage_status(
+        self, status: int
+    ) -> None:
+        err = PoliPageError(
+            f"Failed to download PDF: HTTP {status}", code="DOWNLOAD_FAILED", status=status
+        )
+        assert err.is_retryable() is False
+
+    def test_a_503_api_code_is_still_retryable(self) -> None:
+        err = classify(status=503, code="PUBLISH_IN_PROGRESS", message="m", request_id=None)
+        assert err.is_retryable() is True
+
     def test_true_for_network_and_timeout(self) -> None:
         assert APIConnectionError("m", code="network_error").is_retryable()
         assert APITimeoutError("m", code="timeout").is_retryable()

@@ -13,6 +13,7 @@ The Poli Page Python SDK retries transient failures automatically. Every POST ca
 - Exponential backoff starting at `retry_delay` seconds (default `0.5`), doubling each attempt, with a random factor in `[0.5, 1.5)`.
 - Honors the `Retry-After` response header when present (integer seconds or an HTTP-date), clamped to 0–30 seconds, without jitter. `Retry-After-Ms` is ignored.
 - Caller cancellation (`asyncio.CancelledError`, `KeyboardInterrupt`) is never retried. The presigned-URL download is never retried.
+- `DOWNLOAD_FAILED` is never retried and `is_retryable()` is `False` for it, whatever the storage status.
 
 ## Disabling retries
 

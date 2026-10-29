@@ -166,7 +166,7 @@ thumbs = client.documents.thumbnails(doc.document_id, {"width": 320, "format": "
 client.documents.delete(doc.document_id)
 ```
 
-The presigned URL has a 15-minute TTL. If `download_pdf()` fails with `code='DOWNLOAD_FAILED'` (HTTP 403 from S3), call `documents.get(id)` to refresh and retry.
+The presigned URL has a 15-minute TTL. If `download_pdf()` fails with `code='DOWNLOAD_FAILED'` (HTTP 403 from S3), call `documents.get(id)` to refresh and retry. `DOWNLOAD_FAILED` is never retryable, whatever the storage status: the SDK does not retry it and `is_retryable()` is `False`.
 
 ## Authentication & environments
 
@@ -293,7 +293,7 @@ Predicate helpers are kept for cross-language parity:
 - `err.is_rate_limit_error()` — `status` 429
 - `err.is_validation_error()` — `status` 400
 - `err.is_network_error()` — `code` `network_error` or `timeout` (every `APIConnectionError`)
-- `err.is_retryable()` — 5xx, 429, network, or timeout, except `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED`
+- `err.is_retryable()` — 5xx, 429, network, or timeout, except `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED`, `STORAGE_ACCESS_DENIED` and `DOWNLOAD_FAILED`
 
 For lifecycle and billing failures, route the user to actionable messages:
 
