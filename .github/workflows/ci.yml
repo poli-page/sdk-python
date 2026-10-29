@@ -19,7 +19,7 @@ jobs:
         python-version: ['3.11', '3.12', '3.13']
     defaults:
       run:
-        # Bash on every runner — keeps the auto-skip conditionals portable on Windows.
+        # Bash on every runner — the same step scripts on Windows.
         shell: bash
     steps:
       - uses: actions/checkout@v7
@@ -31,53 +31,32 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install
+        # Strict: a failed install fails the job, so no later step can skip for lack of a tool.
         run: |
           python -m pip install --upgrade pip
-          if [ -f pyproject.toml ]; then
-            pip install -e ".[dev]" 2>/dev/null || pip install -e . || echo "pyproject.toml exists but install failed — check it"
-          elif [ -f requirements-dev.txt ]; then
-            pip install -r requirements-dev.txt
-          elif [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            echo "No manifest yet — skipping install"
-          fi
+          python -m pip install -e ".[dev]"
 
       - name: Lint
         run: |
-          if python -m ruff --version >/dev/null 2>&1; then
-            python -m ruff check .
-            python -m ruff format --check .
-          else
-            echo "ruff not installed — skipping lint"
-          fi
+          python -m ruff check .
+          python -m ruff format --check .
 
       - name: API contract
         id: contract
         uses: poli-page/api-contract@98849e50fb59cd3037bf59c8cdf885c341bd536f # v1.1.0
 
       - name: Test
-        # tests/test_contract.py runs the contract's SDK cases; it fails in CI without POLI_CONTRACT.
+        # tests/test_contract.py runs the contract's SDK cases. With CI set it fails, never
+        # skips, when POLI_CONTRACT is missing; CI is set here too rather than left to the runner.
         env:
+          CI: "true"
           POLI_CONTRACT: ${{ steps.contract.outputs.path }}
         run: |
-          if python -m pytest --version >/dev/null 2>&1; then
-            if [ -d tests ] && find tests \( -name "test_*.py" -o -name "*_test.py" \) | grep -q .; then
-              if python -c "import pytest_cov" 2>/dev/null; then
-                python -m pytest -v --cov=poli_page --cov-report=xml --cov-report=term
-              else
-                python -m pytest -v
-              fi
-            else
-              echo "pytest available but no tests yet — skipping"
-            fi
-          else
-            echo "pytest not installed — skipping test"
-          fi
+          test -s "$POLI_CONTRACT" || { echo "::error::API contract file missing: '$POLI_CONTRACT'"; exit 1; }
+          python -m pytest -v -rs --cov=poli_page --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
-        # Why: only upload from one matrix slot to avoid duplicate reports;
-        # skip silently when coverage.xml wasn't produced (e.g. pytest-cov absent).
+        # Why: only upload from one matrix slot to avoid duplicate reports.
         # use_oidc is required: Codecov rejects tokenless uploads on the default
         # (protected) branch, and we've granted id-token: write at the job level.
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && hashFiles('coverage.xml') != ''

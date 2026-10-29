@@ -98,8 +98,11 @@ jobs:
 
       - name: Unit and contract tests
         env:
+          CI: "true"
           POLI_CONTRACT: ${{ steps.contract.outputs.path }}
-        run: python -m pytest tests/unit/ tests/test_smoke.py tests/test_contract.py -q
+        run: |
+          test -s "$POLI_CONTRACT" || { echo "::error::API contract file missing: '$POLI_CONTRACT'"; exit 1; }
+          python -m pytest tests/unit/ tests/test_smoke.py tests/test_contract.py -q -rs
 
       - name: Build wheel + sdist
         run: python -m build
