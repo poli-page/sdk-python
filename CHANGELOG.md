@@ -29,11 +29,16 @@ Conformance with the Poli Page API contract v1.1.0
 - **Breaking:** an explicit empty `api_key=""` raises `invalid_options`, on `PoliPage`,
   `AsyncPoliPage` and `with_options`. It used to fall back to `POLI_PAGE_API_KEY`; the
   environment variable now stands in only for an omitted key (`api_key=None`).
-- The error predicates read `status` and `code`, as the SDK specification defines them,
-  instead of the exception class: `is_auth_error()` is `status` 401 or 403,
-  `is_rate_limit_error()` 429, `is_validation_error()` 400, and `is_network_error()` is `code`
-  `network_error` or `timeout`. For API errors nothing changes; a `DOWNLOAD_FAILED` with the
-  storage's 403 is now an auth error.
+- **Breaking:** the error predicates read `status` and `code`, as the SDK specification
+  defines them, instead of the exception class: `is_auth_error()` is `status` 401 or 403,
+  `is_rate_limit_error()` 429, `is_validation_error()` 400, `is_network_error()` is `code`
+  `network_error` or `timeout`, and `is_retryable()` is a network error, a timeout, a 5xx or a
+  429 outside the never-retried codes. For API errors only the never-retried codes change.
+  A `DOWNLOAD_FAILED` now follows the storage's status: 403 (and 401) is an auth error, 400 a
+  validation error, 429 a rate-limit error, and a 5xx or 429 makes `is_retryable()` `True`
+  (it was `False` for every `DOWNLOAD_FAILED`). The SDK still never retries the download
+  itself, but code that requeues on `is_retryable()` now requeues a download that storage
+  refused with a 5xx or 429. A download with no status (network error) stays non-retryable.
 - SDK error messages are the exact texts of the SDK specification:
   - `invalid_options`: `apiKey is required` (was
     `api_key is required (pass api_key= or set POLI_PAGE_API_KEY)`).
