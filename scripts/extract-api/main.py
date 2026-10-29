@@ -611,7 +611,7 @@ def _errors_mdx() -> str:
 
         ## SDK-internal
 
-        <ErrorTable errors={[{"code":"invalid_options","when":"Constructor arguments are missing or malformed (`apiKey is required`)."},{"code":"network_error","when":"TCP/TLS-level failure reaching the API (`Network request failed`; the httpx exception is the `__cause__`). Retryable."},{"code":"timeout","when":"The request did not complete within `timeout` (`Request timed out after <ms>ms`). Retryable."},{"code":"DOWNLOAD_FAILED","when":"The S3 second-hop download failed: `Failed to download PDF: HTTP <status>` with the storage `status`, or `Failed to download PDF: network error` without one. Not retried by the SDK."}]} />
+        <ErrorTable errors={[{"code":"invalid_options","when":"Constructor arguments are missing or malformed (`apiKey is required`)."},{"code":"network_error","when":"TCP/TLS-level failure reaching the API (`Network request failed`; the httpx exception is the `__cause__`). Retryable."},{"code":"timeout","when":"The request did not complete within `timeout` (`Request timed out after <ms>ms`). Retryable."},{"code":"DOWNLOAD_FAILED","when":"The S3 second-hop download failed: `Failed to download PDF: HTTP <status>` with the storage `status`, or `Failed to download PDF: network error` without one. Never retryable, whatever the storage status."}]} />
 
         ## Authentication
 

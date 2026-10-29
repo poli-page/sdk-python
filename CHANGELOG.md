@@ -15,7 +15,6 @@ Conformance with the Poli Page API contract v1.3.0
 
 ### Changed
 
-- `DOWNLOAD_FAILED` is never retryable, whatever the storage status (was retryable for a storage 5xx or 429). Contract v1.3.0.
 - **Breaking:** `QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED` (429) and `STORAGE_ACCESS_DENIED`
   (502) are no longer retried, even with a `Retry-After` header, and `is_retryable()` now
   returns `False` for them (it returned `True` for any 429 or 5xx). They last until the monthly
