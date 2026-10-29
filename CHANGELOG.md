@@ -9,12 +9,13 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
-Conformance with the Poli Page API contract v1.1.0
+Conformance with the Poli Page API contract v1.3.0
 ([poli-page/api-contract](https://github.com/poli-page/api-contract)). See
 [MIGRATION.md](MIGRATION.md#from-0100-to-the-next-release-unreleased).
 
 ### Changed
 
+- `DOWNLOAD_FAILED` is never retryable, whatever the storage status (was retryable for a storage 5xx or 429). Contract v1.3.0.
 - **Breaking:** `QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED` (429) and `STORAGE_ACCESS_DENIED`
   (502) are no longer retried, even with a `Retry-After` header, and `is_retryable()` now
   returns `False` for them (it returned `True` for any 429 or 5xx). They last until the monthly
@@ -35,10 +36,8 @@ Conformance with the Poli Page API contract v1.1.0
   `network_error` or `timeout`, and `is_retryable()` is a network error, a timeout, a 5xx or a
   429 outside the never-retried codes. For API errors only the never-retried codes change.
   A `DOWNLOAD_FAILED` now follows the storage's status: 403 (and 401) is an auth error, 400 a
-  validation error, 429 a rate-limit error, and a 5xx or 429 makes `is_retryable()` `True`
-  (it was `False` for every `DOWNLOAD_FAILED`). The SDK still never retries the download
-  itself, but code that requeues on `is_retryable()` now requeues a download that storage
-  refused with a 5xx or 429. A download with no status (network error) stays non-retryable.
+  validation error and 429 a rate-limit error. It is never retryable, whatever the storage
+  status: `is_retryable()` is `False` for it (contract v1.3.0).
 - SDK error messages are the exact texts of the SDK specification:
   - `invalid_options`: `apiKey is required` (was
     `api_key is required (pass api_key= or set POLI_PAGE_API_KEY)`).

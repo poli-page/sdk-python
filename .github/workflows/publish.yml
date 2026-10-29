@@ -94,7 +94,7 @@ jobs:
 
       - name: API contract
         id: contract
-        uses: poli-page/api-contract@98849e50fb59cd3037bf59c8cdf885c341bd536f # v1.1.0
+        uses: poli-page/api-contract@0eba96c1ecf9a28b7e259f444f3ca5b7c059d5fd # v1.3.0
 
       - name: Unit and contract tests
         env:

@@ -51,12 +51,11 @@ client = PoliPage(api_key=os.environ.get("MY_KEY"))  # None -> POLI_PAGE_API_KEY
 The predicates now read `status` and `code` (SDK spec §8.1) instead of the
 exception class. API errors behave as before, apart from the three codes above.
 A `DOWNLOAD_FAILED`, raised when the presigned-URL download fails, now carries
-the storage's verdict: `is_retryable()` is `True` for a storage 5xx or 429 (it
-was `False` for every `DOWNLOAD_FAILED`), `is_rate_limit_error()` for a 429,
-`is_validation_error()` for a 400 and `is_auth_error()` for a 401 or 403. The
-SDK still does not retry the download, but a queue that requeues on
-`is_retryable()` now requeues such downloads. A download that got no answer
-(no status) stays non-retryable. To keep the old behaviour, test the code first:
+the storage's verdict: `is_rate_limit_error()` is `True` for a 429,
+`is_validation_error()` for a 400 and `is_auth_error()` for a 401 or 403.
+`is_retryable()` stays `False` for every `DOWNLOAD_FAILED`, whatever the storage
+status: the SDK does not retry the download and a queue should not requeue it
+blindly. To refresh the URL, test the code first:
 
 ```python
 except PoliPageError as err:
