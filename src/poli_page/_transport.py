@@ -145,16 +145,17 @@ def compute_backoff(attempt: int, base_delay: float, retry_after: float | None) 
 
 def sleep_at_least(seconds: float) -> None:
     """Sleep `seconds`, sleeping again if the clock woke early, so a retry wait
-    is never shorter than asked."""
-    end = time.monotonic() + seconds
-    while (left := end - time.monotonic()) > 0:
+    is never shorter than asked. `perf_counter`, not `monotonic`: on Windows
+    before Python 3.13 `monotonic` ticks every 15.6 ms."""
+    end = time.perf_counter() + seconds
+    while (left := end - time.perf_counter()) > 0:
         time.sleep(left)
 
 
 async def async_sleep_at_least(seconds: float) -> None:
     """The asyncio form of `sleep_at_least`."""
-    end = time.monotonic() + seconds
-    while (left := end - time.monotonic()) > 0:
+    end = time.perf_counter() + seconds
+    while (left := end - time.perf_counter()) > 0:
         await asyncio.sleep(left)
 
 

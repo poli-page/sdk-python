@@ -405,9 +405,9 @@ def test_sleep_at_least_sleeps_again_when_woken_early(monkeypatch: pytest.Monkey
     real_sleep = real_time.sleep
     # Every sleep of 0.2 s or more wakes 50 ms early.
     monkeypatch.setattr(_transport.time, "sleep", lambda s: real_sleep(s - 0.05 if s >= 0.2 else s))
-    start = real_time.monotonic()
+    start = real_time.perf_counter()
     _transport.sleep_at_least(0.3)
-    assert real_time.monotonic() - start >= 0.3
+    assert real_time.perf_counter() - start >= 0.3
 
 
 async def test_async_sleep_at_least_sleeps_again_when_woken_early(
@@ -424,6 +424,6 @@ async def test_async_sleep_at_least_sleeps_again_when_woken_early(
         await real_sleep(s - 0.05 if s >= 0.2 else s)
 
     monkeypatch.setattr(_transport.asyncio, "sleep", early)
-    start = real_time.monotonic()
+    start = real_time.perf_counter()
     await _transport.async_sleep_at_least(0.3)
-    assert real_time.monotonic() - start >= 0.3
+    assert real_time.perf_counter() - start >= 0.3
