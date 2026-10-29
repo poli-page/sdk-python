@@ -92,8 +92,17 @@ jobs:
       - name: Typecheck (pyright)
         run: python -m pyright
 
-      - name: Unit tests
-        run: python -m pytest tests/unit/ tests/test_smoke.py -q
+      - name: API contract
+        id: contract
+        uses: poli-page/api-contract@98849e50fb59cd3037bf59c8cdf885c341bd536f # v1.1.0
+
+      - name: Unit and contract tests
+        env:
+          CI: "true"
+          POLI_CONTRACT: ${{ steps.contract.outputs.path }}
+        run: |
+          test -s "$POLI_CONTRACT" || { echo "::error::API contract file missing: '$POLI_CONTRACT'"; exit 1; }
+          python -m pytest tests/unit/ tests/test_smoke.py tests/test_contract.py -q -rs
 
       - name: Build wheel + sdist
         run: python -m build

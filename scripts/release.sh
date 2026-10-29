@@ -7,7 +7,8 @@
 #
 # What it does, in order:
 #   1. Pre-flight: on main, clean tree, tag doesn't already exist.
-#   2. Verify: ruff, pyright, unit tests (integration if POLI_PAGE_API_KEY set).
+#   2. Verify: ruff, pyright, unit tests and the API contract tests against the
+#      contract version CI pins (integration if POLI_PAGE_API_KEY set).
 #   3. Build: python -m build (wheel + sdist into dist/).
 #   4. Inspect: twine check, list contents, show total size.
 #   5. Confirm with the user before uploading.
@@ -106,11 +107,22 @@ fi
 ok "tag v$VERSION does not exist yet"
 
 # ─── 3. verify ──────────────────────────────────────────────────────────────
-step "Lint + format + typecheck + unit tests"
+step "Lint + format + typecheck + unit and contract tests"
+# tests/test_contract.py runs the API contract cases. Use the contract version
+# CI pins, unless POLI_CONTRACT already names a contract.json.
+if [[ -z "${POLI_CONTRACT:-}" ]]; then
+	contract_sha=$(sed -n 's|.*uses: poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' .github/workflows/ci.yml | head -n 1)
+	[[ -n "$contract_sha" ]] || fail "no poli-page/api-contract pin found in .github/workflows/ci.yml"
+	POLI_CONTRACT="$(mktemp -d)/contract.json"
+	curl -fsSL "https://raw.githubusercontent.com/poli-page/api-contract/$contract_sha/contract.json" -o "$POLI_CONTRACT" \
+		|| fail "could not download the API contract $contract_sha; set POLI_CONTRACT to its contract.json"
+	export POLI_CONTRACT
+fi
+ok "API contract: $POLI_CONTRACT"
 $PY -m ruff check .
 $PY -m ruff format --check .
 $PY -m pyright
-$PY -m pytest tests/unit/ tests/test_smoke.py -q
+$PY -m pytest tests/unit/ tests/test_smoke.py tests/test_contract.py -q
 ok "all checks passed"
 
 if [[ -n "${POLI_PAGE_API_KEY:-}" ]]; then

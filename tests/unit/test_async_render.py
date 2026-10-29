@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import httpx
 import pytest
 import respx
@@ -61,6 +63,18 @@ def _pdf_response() -> httpx.Response:
     )
 
 
+class _DroppedBody(httpx.AsyncByteStream):
+    """A PDF body whose connection drops after the first chunk."""
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b"%PDF-1.4 partial"
+        raise httpx.RemoteProtocolError("peer closed connection without sending complete body")
+
+
+def _dropped_pdf_response() -> httpx.Response:
+    return httpx.Response(200, headers={"Content-Type": "application/pdf"}, stream=_DroppedBody())
+
+
 class TestRenderDocument:
     @respx.mock
     async def test_returns_async_descriptor(self) -> None:
@@ -89,6 +103,7 @@ class TestRenderDocument:
                 await doc.download_pdf()
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status == 403
+        assert excinfo.value.message == "Failed to download PDF: HTTP 403"
 
     @respx.mock
     async def test_download_pdf_network_error_raises_download_failed(self) -> None:
@@ -100,6 +115,8 @@ class TestRenderDocument:
                 await doc.download_pdf()
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status is None
+        assert excinfo.value.message == "Failed to download PDF: network error"
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
 
     @respx.mock
     async def test_missing_project_rejected_locally(self) -> None:
@@ -186,6 +203,7 @@ class TestRenderPdfStream:
                         pass
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status == 404
+        assert excinfo.value.message == "Failed to download PDF: HTTP 404"
 
 
 class TestIdempotencyKeyAcrossRetries:
@@ -205,3 +223,35 @@ class TestIdempotencyKeyAcrossRetries:
         second = route.calls[1].request.headers["Idempotency-Key"]
         assert first == second
         assert first
+
+
+class TestDownloadDroppedMidBody:
+    """A connection dropped while the PDF body is read is DOWNLOAD_FAILED, never raw httpx."""
+
+    def _assert_network_download_failed(self, err: PoliPageError) -> None:
+        assert err.code == "DOWNLOAD_FAILED"
+        assert err.status is None
+        assert err.message == "Failed to download PDF: network error"
+        assert isinstance(err.__cause__, httpx.RemoteProtocolError)
+
+    @respx.mock
+    async def test_render_pdf(self) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=_dropped_pdf_response())
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
+            with pytest.raises(PoliPageError) as excinfo:
+                await client.render.pdf(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        self._assert_network_download_failed(excinfo.value)
+
+    @respx.mock
+    async def test_render_pdf_stream(self) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=_dropped_pdf_response())
+        chunks: list[bytes] = []
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
+            with pytest.raises(PoliPageError) as excinfo:
+                async with client.render.pdf_stream(PROJECT_MODE_INPUT) as stream:  # type: ignore[arg-type]
+                    async for chunk in stream:
+                        chunks.append(chunk)
+        assert chunks == [b"%PDF-1.4 partial"]
+        self._assert_network_download_failed(excinfo.value)

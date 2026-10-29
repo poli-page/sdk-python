@@ -9,6 +9,7 @@ Mocked via respx; lives in tests/unit/.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import assert_type
 
 import httpx
@@ -69,6 +70,18 @@ def _pdf_response() -> httpx.Response:
     return httpx.Response(
         200, content=b"%PDF-1.4 stub content here", headers={"Content-Type": "application/pdf"}
     )
+
+
+class _DroppedBody(httpx.SyncByteStream):
+    """A PDF body whose connection drops after the first chunk."""
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield b"%PDF-1.4 partial"
+        raise httpx.RemoteProtocolError("peer closed connection without sending complete body")
+
+
+def _dropped_pdf_response() -> httpx.Response:
+    return httpx.Response(200, headers={"Content-Type": "application/pdf"}, stream=_DroppedBody())
 
 
 PROJECT_MODE_INPUT: dict[str, object] = {
@@ -177,6 +190,7 @@ class TestRenderDocument:
             doc.download_pdf()
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status == 403
+        assert excinfo.value.message == "Failed to download PDF: HTTP 403"
 
     @respx.mock
     def test_download_pdf_network_error_raises_download_failed(self, client: PoliPage) -> None:
@@ -187,6 +201,8 @@ class TestRenderDocument:
             doc.download_pdf()
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status is None
+        assert excinfo.value.message == "Failed to download PDF: network error"
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
 
     @respx.mock
     def test_missing_project_rejected_locally(self, client: PoliPage) -> None:
@@ -195,6 +211,7 @@ class TestRenderDocument:
         with pytest.raises(PoliPageError) as excinfo:
             client.render.document({"template": "invoice", "data": {}})  # type: ignore[arg-type]
         assert excinfo.value.code == "PROJECT_REQUIRED_FOR_DOCUMENT"
+        assert excinfo.value.message == "project is required"
         assert excinfo.value.status is None
         assert not route.called
 
@@ -263,6 +280,7 @@ class TestRenderPdfStream:
                 pass
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status == 404
+        assert excinfo.value.message == "Failed to download PDF: HTTP 404"
 
     @respx.mock
     def test_network_error_on_stream_raises_download_failed(self, client: PoliPage) -> None:
@@ -276,6 +294,8 @@ class TestRenderPdfStream:
                 pass
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert excinfo.value.status is None
+        assert excinfo.value.message == "Failed to download PDF: network error"
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
 
 
 class TestRequestBody:
@@ -404,3 +424,44 @@ class TestPublicSurface:
         from poli_page import _constants
 
         assert not hasattr(_constants, "PATH_RENDER_PREVIEW")
+
+
+class TestDownloadDroppedMidBody:
+    """A connection dropped while the PDF body is read is DOWNLOAD_FAILED, never raw httpx."""
+
+    def _assert_network_download_failed(self, err: PoliPageError) -> None:
+        assert err.code == "DOWNLOAD_FAILED"
+        assert err.status is None
+        assert err.message == "Failed to download PDF: network error"
+        assert isinstance(err.__cause__, httpx.RemoteProtocolError)
+
+    @respx.mock
+    def test_render_pdf(self, client: PoliPage) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=_dropped_pdf_response())
+        with pytest.raises(PoliPageError) as excinfo:
+            client.render.pdf(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        self._assert_network_download_failed(excinfo.value)
+
+    @respx.mock
+    def test_download_pdf(self, client: PoliPage) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=_dropped_pdf_response())
+        doc = client.render.document(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+        with pytest.raises(PoliPageError) as excinfo:
+            doc.download_pdf()
+        self._assert_network_download_failed(excinfo.value)
+
+    @respx.mock
+    def test_render_pdf_stream(self, client: PoliPage) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=_dropped_pdf_response())
+        chunks: list[bytes] = []
+        with (
+            pytest.raises(PoliPageError) as excinfo,
+            client.render.pdf_stream(PROJECT_MODE_INPUT) as stream,  # type: ignore[arg-type]
+        ):
+            for chunk in stream:
+                chunks.append(chunk)
+        assert chunks == [b"%PDF-1.4 partial"]
+        self._assert_network_download_failed(excinfo.value)

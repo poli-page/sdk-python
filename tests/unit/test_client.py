@@ -73,6 +73,7 @@ class TestConstructor:
         with pytest.raises(PoliPageError) as excinfo:
             PoliPage()
         assert excinfo.value.code == "invalid_options"
+        assert excinfo.value.message == "apiKey is required"
         assert excinfo.value.status is None
 
     def test_raises_invalid_options_on_empty_string_api_key(
@@ -82,6 +83,23 @@ class TestConstructor:
         with pytest.raises(PoliPageError) as excinfo:
             PoliPage(api_key="")
         assert excinfo.value.code == "invalid_options"
+
+    def test_empty_string_api_key_raises_even_with_env_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # SDK spec §4.1: the environment variable stands in only for an omitted key.
+        monkeypatch.setenv("POLI_PAGE_API_KEY", "pp_sandbox_from_env")
+        with pytest.raises(PoliPageError) as excinfo:
+            PoliPage(api_key="")
+        assert excinfo.value.code == "invalid_options"
+        assert excinfo.value.message == "apiKey is required"
+
+    def test_with_options_empty_string_api_key_raises(self) -> None:
+        client = PoliPage(api_key="pp_sandbox_abc")
+        with pytest.raises(PoliPageError) as excinfo:
+            client.with_options(api_key="")
+        assert excinfo.value.code == "invalid_options"
+        client.close()
 
     def test_accepts_explicit_api_key(self) -> None:
         client = PoliPage(api_key="pp_sandbox_abc")
@@ -489,6 +507,8 @@ class TestErrorMapping:
         with pytest.raises(APIConnectionError) as excinfo:
             client.render.document(RENDER_INPUT)
         assert excinfo.value.code == "network_error"
+        assert excinfo.value.message == "Network request failed"
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
 
     @respx.mock
     def test_timeout_raises_apitimeouterror(self) -> None:
@@ -499,6 +519,21 @@ class TestErrorMapping:
         with pytest.raises(APITimeoutError) as excinfo:
             client.render.document(RENDER_INPUT)
         assert excinfo.value.code == "timeout"
+        assert excinfo.value.message == "Request timed out after 60000ms"
+        assert isinstance(excinfo.value.__cause__, httpx.ReadTimeout)
+
+    @respx.mock
+    def test_timeout_message_uses_the_attempt_timeout(self) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=httpx.ReadTimeout("slow"))
+        client = PoliPage(
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=0, timeout=0.15
+        )
+        with pytest.raises(APITimeoutError) as excinfo:
+            client.render.document(RENDER_INPUT)
+        assert excinfo.value.message == "Request timed out after 150ms"
+        with pytest.raises(APITimeoutError) as excinfo:
+            client.render.document({**RENDER_INPUT, "timeout": 2.5})
+        assert excinfo.value.message == "Request timed out after 2500ms"
 
 
 class TestRetryLoop:
@@ -662,7 +697,22 @@ class TestRetryLoop:
         assert sleeps == [30.0]
 
     @respx.mock
-    def test_retry_after_ms_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_huge_retry_after_clamps_instead_of_raising(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sleeps: list[float] = []
+        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        responses = [
+            httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "9" * 400}),
+            httpx.Response(200, json=RENDER_RESPONSE),
+        ]
+        respx.get(f"{TEST_BASE_URL}/v1/documents/doc_1").mock(side_effect=responses)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2)
+        client.documents.get("doc_1")
+        assert sleeps == [30.0]
+
+    @respx.mock
+    def test_retry_after_ms_is_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
         monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
         responses = [
@@ -678,8 +728,59 @@ class TestRetryLoop:
             api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2, retry_delay=10.0
         )
         client.render.document(RENDER_INPUT)
-        # 250 ms → 0.25 s, takes precedence over Retry-After: 5.
-        assert sleeps == [0.25]
+        # SDK spec §9.2: only Retry-After is read.
+        assert sleeps == [5.0]
+
+    @respx.mock
+    def test_retry_after_ms_alone_falls_back_to_backoff(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sleeps: list[float] = []
+        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("poli_page._transport.random.random", lambda: 0.5)
+        responses = [
+            httpx.Response(503, json={"code": "down"}, headers={"Retry-After-Ms": "5000"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
+        ]
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
+        client = PoliPage(
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2, retry_delay=0.02
+        )
+        client.render.document(RENDER_INPUT)
+        # retry_delay x 2^0 x (0.5 + 0.5)
+        assert sleeps == [0.02]
+
+    @respx.mock
+    @pytest.mark.parametrize(
+        ("status", "code"),
+        [
+            (429, "QUOTA_EXCEEDED"),
+            (429, "OVERAGE_CAP_EXCEEDED"),
+            (502, "STORAGE_ACCESS_DENIED"),
+        ],
+    )
+    def test_never_retried_codes_raise_at_once(self, status: int, code: str) -> None:
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
+            return_value=httpx.Response(status, json={"error": code}, headers={"Retry-After": "1"})
+        )
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2)
+        with pytest.raises(PoliPageError) as excinfo:
+            client.render.document(RENDER_INPUT)
+        assert route.call_count == 1
+        assert excinfo.value.code == code
+        assert excinfo.value.status == status
+        assert excinfo.value.is_retryable() is False
+
+    @respx.mock
+    def test_rate_limit_exceeded_is_still_retried(self) -> None:
+        responses = [
+            httpx.Response(429, json={"error": "RATE_LIMIT_EXCEEDED"}),
+            httpx.Response(200, json=RENDER_RESPONSE),
+        ]
+        route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2)
+        client.render.document(RENDER_INPUT)
+        assert route.call_count == 2
 
     @respx.mock
     def test_max_retries_zero_disables_retries(self) -> None:
@@ -844,10 +945,10 @@ class TestHooks:
 
     @respx.mock
     def test_on_retry_event_delay_is_milliseconds(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Force compute_backoff to return exactly 0.25 seconds via Retry-After-Ms.
+        # Force compute_backoff to return exactly 1 second via Retry-After.
         events: list[RetryEvent] = []
         responses = [
-            httpx.Response(503, json={"code": "down"}, headers={"Retry-After-Ms": "250"}),
+            httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "1"}),
             httpx.Response(200, json=RENDER_RESPONSE),
         ]
         respx.post(f"{TEST_BASE_URL}/v1/render").mock(side_effect=responses)
@@ -860,8 +961,8 @@ class TestHooks:
         )
         client.render.document(RENDER_INPUT)
         assert len(events) == 1
-        # 250 ms server-instructed delay → event.delay_ms == 250.0
-        assert events[0].delay_ms == 250.0
+        # 1 s server-instructed delay → event.delay_ms == 1000.0
+        assert events[0].delay_ms == 1000.0
 
 
 class TestPerCallTimeout:

@@ -9,6 +9,67 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+Conformance with the Poli Page API contract v1.1.0
+([poli-page/api-contract](https://github.com/poli-page/api-contract)). See
+[MIGRATION.md](MIGRATION.md#from-0100-to-the-next-release-unreleased).
+
+### Changed
+
+- **Breaking:** `QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED` (429) and `STORAGE_ACCESS_DENIED`
+  (502) are no longer retried, even with a `Retry-After` header, and `is_retryable()` now
+  returns `False` for them (it returned `True` for any 429 or 5xx). They last until the monthly
+  reset or until the bucket access is restored, so the SDK used to wait up to 30 s per retry
+  for nothing. `RATE_LIMIT_EXCEEDED` and every other 429 and 5xx are still retried. Code that
+  requeues on `is_retryable()` stops requeueing these three.
+- **Breaking:** the `Retry-After-Ms` response header is ignored; only `Retry-After` sets the
+  delay before a retry (it used to win over `Retry-After`). Without `Retry-After` the
+  exponential backoff applies.
+- `Retry-After` is read as integer seconds or an HTTP-date only. Any other value (`1.5`, `-1`,
+  `soon`) falls back to the backoff instead of being parsed as a float.
+- **Breaking:** an explicit empty `api_key=""` raises `invalid_options`, on `PoliPage`,
+  `AsyncPoliPage` and `with_options`. It used to fall back to `POLI_PAGE_API_KEY`; the
+  environment variable now stands in only for an omitted key (`api_key=None`).
+- **Breaking:** the error predicates read `status` and `code`, as the SDK specification
+  defines them, instead of the exception class: `is_auth_error()` is `status` 401 or 403,
+  `is_rate_limit_error()` 429, `is_validation_error()` 400, `is_network_error()` is `code`
+  `network_error` or `timeout`, and `is_retryable()` is a network error, a timeout, a 5xx or a
+  429 outside the never-retried codes. For API errors only the never-retried codes change.
+  A `DOWNLOAD_FAILED` now follows the storage's status: 403 (and 401) is an auth error, 400 a
+  validation error, 429 a rate-limit error, and a 5xx or 429 makes `is_retryable()` `True`
+  (it was `False` for every `DOWNLOAD_FAILED`). The SDK still never retries the download
+  itself, but code that requeues on `is_retryable()` now requeues a download that storage
+  refused with a 5xx or 429. A download with no status (network error) stays non-retryable.
+- SDK error messages are the exact texts of the SDK specification:
+  - `invalid_options`: `apiKey is required` (was
+    `api_key is required (pass api_key= or set POLI_PAGE_API_KEY)`).
+  - `network_error`: `Network request failed` (was the httpx exception text); the httpx
+    exception is still the error's `__cause__`.
+  - `timeout`: `Request timed out after <ms>ms`, with the attempt's timeout in milliseconds,
+    the per-call `timeout` when one is set (was `Request timed out after <s>s` with the
+    client's timeout in seconds).
+  - `DOWNLOAD_FAILED`: `Failed to download PDF: HTTP <status>` (was
+    `Failed to download PDF: <status>`), and `Failed to download PDF: network error` when the
+    download gets no answer (was the httpx exception text, now its `__cause__`).
+  - A non-JSON error body: `HTTP <status>` (was
+    `HTTP <status>: response body was not valid JSON`); the code is still `INTERNAL_ERROR`
+    with the real status.
+  - `PROJECT_REQUIRED_FOR_DOCUMENT` raised before any request: `project is required`.
+
+### Fixed
+
+- The "Retries and idempotency" docs page no longer says the API deduplicates on
+  `Idempotency-Key`: it does not, so a render retried after a late 5xx can store a second
+  document. The SDK sends one stable key across the retries of a call.
+- A `Retry-After: nan` header no longer makes the sync client's retry sleep raise a raw
+  `ValueError`: the value is unparseable and the backoff applies.
+
+### Added
+
+- `tests/test_contract.py` runs every SDK case of the API contract against a local mock server,
+  with both `PoliPage` and `AsyncPoliPage`; CI pins the contract by commit
+  (`poli-page/api-contract` action) and Dependabot proposes each new version. Run it locally
+  with `POLI_CONTRACT=<path to contract.json> pytest`.
+
 ## [0.10.0] - 2026-10-27
 
 Environments contract: a key carries its environment (`pp_{env}_…`), versions and the

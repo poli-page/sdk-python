@@ -27,10 +27,10 @@ except PoliPageError as err:
 These originate inside the SDK before any HTTP call (or in response to a network-layer failure). They are lowercase.
 
 <ErrorTable errors={[
-  { code: 'invalid_options', when: 'The arguments passed to the PoliPage constructor are invalid (missing api_key, malformed base_url, etc.).', recovery: 'Fix the constructor call. Raised synchronously.' },
-  { code: 'network_error', when: 'TCP/TLS-layer failure reaching the API.', recovery: 'Automatically retried up to max_retries times.' },
-  { code: 'timeout', when: 'The request did not complete within the configured `timeout`.', recovery: 'Automatically retried up to max_retries times. Raise `timeout` if it keeps tripping.' },
-  { code: 'DOWNLOAD_FAILED', when: 'The S3 second-hop download (after `render.pdf` / `render.pdf_stream`) failed.', recovery: 'Re-fetch the descriptor via documents.get(id) — presigned URLs expire after 15 minutes.' },
+  { code: 'invalid_options', when: 'The arguments passed to the PoliPage constructor are invalid (missing api_key, malformed base_url, etc.). The message is `apiKey is required`.', recovery: 'Fix the constructor call. Raised synchronously.' },
+  { code: 'network_error', when: 'TCP/TLS-layer failure reaching the API. The message is `Network request failed`; the httpx exception is the `__cause__`.', recovery: 'Automatically retried up to max_retries times.' },
+  { code: 'timeout', when: 'The request did not complete within the configured `timeout`. The message is `Request timed out after <ms>ms`.', recovery: 'Automatically retried up to max_retries times. Raise `timeout` if it keeps tripping.' },
+  { code: 'DOWNLOAD_FAILED', when: 'The S3 second-hop download (after `render.pdf` / `render.pdf_stream`) failed: `Failed to download PDF: HTTP <status>` with the storage `status` (an expired URL gets 403), or `Failed to download PDF: network error` without one, also when the connection drops while the body is read.', recovery: 'Re-fetch the descriptor via documents.get(id) — presigned URLs expire after 15 minutes.' },
 ]} />
 
 ## API codes
@@ -46,11 +46,13 @@ Returned by the Poli Page API. Uppercase, snake-case. The SDK forwards the code 
   { code: 'DOCUMENT_GONE', when: 'The document was deleted, or is a `sandbox` document older than 30 days.', recovery: 'Render it again.' },
   { code: 'VALIDATION_ERROR', when: 'The request body failed validation (for example thumbnail options out of bounds).', recovery: 'Inspect `err.message` for the failing field.' },
   { code: 'MISSING_DATA', when: 'The request body lacks a required `data` field.', recovery: 'Pass `data` (`{}` when the template needs none) on every render call.' },
-  { code: 'QUOTA_EXCEEDED', when: 'The organization reached its monthly quota.', recovery: 'Automatically retried; bump tier for sustained higher throughput.' },
+  { code: 'QUOTA_EXCEEDED', when: 'The organization reached its monthly quota (429).', recovery: 'Not retried: it lasts until the monthly reset. Upgrade the tier for more renders.' },
+  { code: 'OVERAGE_CAP_EXCEEDED', when: 'The organization reached its overage cap (429, paid tiers).', recovery: 'Not retried: it lasts until the monthly reset. Raise the cap in the dashboard.' },
+  { code: 'STORAGE_ACCESS_DENIED', when: 'The organization\'s own storage bucket refuses access (502).', recovery: 'Not retried: restore the bucket role, then call again.' },
   { code: 'RATE_LIMIT_EXCEEDED', when: 'Too many render requests for this key in a short window.', recovery: 'Automatically retried; spread the load.' },
   { code: 'PUBLISH_IN_PROGRESS', when: 'The project is being published into this environment (503 with `Retry-After`).', recovery: 'Automatically retried up to `max_retries` times (default `2`, three attempts in all), each retry waiting `Retry-After` capped at 30 seconds. A publish that outlasts the retries surfaces this error: catch it and retry later.' },
   { code: 'ORGANIZATION_PAYMENT_GRACE', when: 'The organization has unpaid invoices: it is read-only and renders are refused.', recovery: 'Update the payment method in the dashboard.' },
-  { code: 'INTERNAL_ERROR', when: 'The API returned 5xx.', recovery: 'Automatically retried; contact support if it persists.' },
+  { code: 'INTERNAL_ERROR', when: 'The API returned 5xx. Also the code of an error answer whose body is not JSON (a gateway page), with its real status and the message `HTTP <status>`.', recovery: 'Automatically retried; contact support if it persists.' },
 ]} />
 
 The full list of API codes lives in [the reference](../../reference/errors/).
@@ -69,7 +71,8 @@ try:
         "data": {"invoiceNumber": "INV-001", "total": 1280},
     })
 except RateLimitError:
-    # Custom strategy beyond the SDK's built-in retries.
+    # RATE_LIMIT_EXCEEDED outlasted the retries, or QUOTA_EXCEEDED / OVERAGE_CAP_EXCEEDED,
+    # which the SDK never retries: queue the job for later.
     pdf = None
 except PoliPageError as err:
     print(f"render failed: {err.code} ({err.request_id})")
