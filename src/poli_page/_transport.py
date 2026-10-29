@@ -110,7 +110,12 @@ def parse_retry_after(header_value: str | None) -> float | None:
         return None
     value = header_value.strip()
     if value.isascii() and value.isdigit():
-        return min(float(int(value)), RETRY_AFTER_CAP_SECONDS)
+        # Clamp on the digit count first: `int()` refuses very long strings and
+        # `float()` overflows on huge ints, and any such value is past the cap.
+        digits = value.lstrip("0") or "0"
+        if len(digits) > 9:
+            return RETRY_AFTER_CAP_SECONDS
+        return min(float(int(digits)), RETRY_AFTER_CAP_SECONDS)
     try:
         dt = parsedate_to_datetime(value)
     except (TypeError, ValueError, IndexError):

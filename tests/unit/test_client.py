@@ -697,6 +697,21 @@ class TestRetryLoop:
         assert sleeps == [30.0]
 
     @respx.mock
+    def test_huge_retry_after_clamps_instead_of_raising(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sleeps: list[float] = []
+        monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))
+        responses = [
+            httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "9" * 400}),
+            httpx.Response(200, json=RENDER_RESPONSE),
+        ]
+        respx.get(f"{TEST_BASE_URL}/v1/documents/doc_1").mock(side_effect=responses)
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, max_retries=2)
+        client.documents.get("doc_1")
+        assert sleeps == [30.0]
+
+    @respx.mock
     def test_retry_after_ms_is_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
         monkeypatch.setattr("poli_page._client.time.sleep", lambda s: sleeps.append(s))

@@ -61,6 +61,12 @@ class TestParseRetryAfter:
         assert parse_retry_after("inf") is None
         assert parse_retry_after(" 2 ") == 2.0
 
+    def test_huge_integer_clamps_to_cap(self) -> None:
+        # Past float range (309 digits) and past int()'s 4300-digit limit: clamp, never raise.
+        assert parse_retry_after("9" * 400) == RETRY_AFTER_CAP_SECONDS
+        assert parse_retry_after("9" * 5000) == RETRY_AFTER_CAP_SECONDS
+        assert parse_retry_after("0" * 20 + "7") == 7.0
+
     def test_past_http_date_returns_zero(self) -> None:
         past = datetime.now(UTC) - timedelta(seconds=60)
         assert parse_retry_after(_http_date(past)) == 0.0
