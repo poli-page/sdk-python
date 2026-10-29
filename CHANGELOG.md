@@ -9,7 +9,7 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
-Conformance with the Poli Page API contract v1.0.0
+Conformance with the Poli Page API contract v1.1.0
 ([poli-page/api-contract](https://github.com/poli-page/api-contract)). See
 [MIGRATION.md](MIGRATION.md#from-0100-to-the-next-release-unreleased).
 
@@ -26,6 +26,9 @@ Conformance with the Poli Page API contract v1.0.0
   exponential backoff applies.
 - `Retry-After` is read as integer seconds or an HTTP-date only. Any other value (`1.5`, `-1`,
   `soon`) falls back to the backoff instead of being parsed as a float.
+- **Breaking:** an explicit empty `api_key=""` raises `invalid_options`, on `PoliPage`,
+  `AsyncPoliPage` and `with_options`. It used to fall back to `POLI_PAGE_API_KEY`; the
+  environment variable now stands in only for an omitted key (`api_key=None`).
 - The error predicates read `status` and `code`, as the SDK specification defines them,
   instead of the exception class: `is_auth_error()` is `status` 401 or 403,
   `is_rate_limit_error()` 429, `is_validation_error()` 400, and `is_network_error()` is `code`
@@ -49,6 +52,9 @@ Conformance with the Poli Page API contract v1.0.0
 
 ### Fixed
 
+- The "Retries and idempotency" docs page no longer says the API deduplicates on
+  `Idempotency-Key`: it does not, so a render retried after a late 5xx can store a second
+  document. The SDK sends one stable key across the retries of a call.
 - A `Retry-After: nan` header no longer makes the sync client's retry sleep raise a raw
   `ValueError`: the value is unparseable and the backoff applies.
 
