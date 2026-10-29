@@ -22,12 +22,19 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
+      # Daily: a new API contract version (poli-page/api-contract) arrives as a PR at once.
+      interval: daily
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     groups:
+      # The API contract gets PRs of its own: a contract bump shows what the
+      # API change breaks, never mixed with other action bumps.
+      api-contract:
+        patterns:
+          - "poli-page/api-contract"
       actions:
         patterns:
           - "*"
+        exclude-patterns:
+          - "poli-page/api-contract"

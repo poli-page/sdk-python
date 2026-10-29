@@ -52,7 +52,14 @@ jobs:
             echo "ruff not installed — skipping lint"
           fi
 
+      - name: API contract
+        id: contract
+        uses: poli-page/api-contract@c1dcf6904b927a044384dd5b8eb0bc2b16a38a6e # v1.0.0
+
       - name: Test
+        # tests/test_contract.py runs the contract's SDK cases; it fails in CI without POLI_CONTRACT.
+        env:
+          POLI_CONTRACT: ${{ steps.contract.outputs.path }}
         run: |
           if python -m pytest --version >/dev/null 2>&1; then
             if [ -d tests ] && find tests \( -name "test_*.py" -o -name "*_test.py" \) | grep -q .; then
