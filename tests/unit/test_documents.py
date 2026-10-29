@@ -57,7 +57,7 @@ SAMPLE_THUMBNAIL: dict[str, object] = {
 
 @pytest.fixture(autouse=True)
 def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("poli_page._client.time.sleep", lambda _s: None)
+    monkeypatch.setattr("poli_page._client.sleep_at_least", lambda _s: None)
 
 
 @pytest.fixture

@@ -28,7 +28,7 @@ client = PoliPage(max_retries=0)
 
 Every POST request (`render.*`, `documents.thumbnails`) includes an `Idempotency-Key` header: a lowercase UUID v4 the SDK generates once per call and sends unchanged on every retry of that call. `GET` and `DELETE` requests and the presigned-URL download send none.
 
-The API does not deduplicate on this header. Every `POST /v1/render` that reaches the renderer stores a new document, so a retry after a 5xx raised *after* the document was stored can create a second one. A `503 PUBLISH_IN_PROGRESS` is raised before any render work, so retrying it never duplicates. If a duplicate matters to you, set `max_retries=0` for that call's client and decide yourself, for example by checking with `documents.get` the `document_id` you already saved.
+The API does not deduplicate on this header. Every `POST /v1/render` that reaches the renderer stores a new document, so a retry can create a second one when the first attempt was stored but its answer was lost: a 5xx raised *after* the document was stored, a `timeout` that fired while the API was still rendering (for example `timeout=10` on a 15 s render), or a `network_error` after the request reached the API. A `503 PUBLISH_IN_PROGRESS` is raised before any render work, so retrying it never duplicates. If an extra stored document matters to you, lower `max_retries` or raise `timeout`; note that `max_retries=0` also stops the always-safe retry of `PUBLISH_IN_PROGRESS`.
 
 You can supply your own key via `idempotency_key` on the input, for example to correlate a call in your logs; it is sent as is on every attempt of that call:
 

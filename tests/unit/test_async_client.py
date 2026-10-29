@@ -61,7 +61,7 @@ def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _noop(_s: float) -> None:
         return None
 
-    monkeypatch.setattr("poli_page._async_client.asyncio.sleep", _noop)
+    monkeypatch.setattr("poli_page._async_client.async_sleep_at_least", _noop)
 
 
 class TestConstructor:
@@ -337,7 +337,7 @@ class TestRetryLoop:
         async def _track(s: float) -> None:
             sleeps.append(s)
 
-        monkeypatch.setattr("poli_page._async_client.asyncio.sleep", _track)
+        monkeypatch.setattr("poli_page._async_client.async_sleep_at_least", _track)
         responses = [
             httpx.Response(503, json={"code": "down"}, headers={"Retry-After": "0"}),
             httpx.Response(200, json=RENDER_RESPONSE),
@@ -361,7 +361,7 @@ class TestRetryLoop:
         async def _track(s: float) -> None:
             sleeps.append(s)
 
-        monkeypatch.setattr("poli_page._async_client.asyncio.sleep", _track)
+        monkeypatch.setattr("poli_page._async_client.async_sleep_at_least", _track)
         route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(
             return_value=httpx.Response(
                 503, json={"error": "PUBLISH_IN_PROGRESS"}, headers={"Retry-After": "1"}
@@ -381,7 +381,7 @@ class TestRetryLoop:
         async def _track(s: float) -> None:
             sleeps.append(s)
 
-        monkeypatch.setattr("poli_page._async_client.asyncio.sleep", _track)
+        monkeypatch.setattr("poli_page._async_client.async_sleep_at_least", _track)
         responses = [
             httpx.Response(
                 503,

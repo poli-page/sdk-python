@@ -50,7 +50,7 @@ def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _noop(_s: float) -> None:
         return None
 
-    monkeypatch.setattr("poli_page._async_client.asyncio.sleep", _noop)
+    monkeypatch.setattr("poli_page._async_client.async_sleep_at_least", _noop)
 
 
 def _descriptor_response() -> httpx.Response:

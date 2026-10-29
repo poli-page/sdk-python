@@ -390,3 +390,40 @@ class TestFromWire:
         # e.g. `apiKeyID`, the converter must not produce `api_key_i_d`.
         # We accept `api_key_id` as the canonical output for `apiKeyId`.
         assert from_wire({"apiKeyId": "ak_1"}) == {"api_key_id": "ak_1"}
+
+
+# ---------------------------------------------------------------------------
+# sleep_at_least / async_sleep_at_least
+# ---------------------------------------------------------------------------
+
+
+def test_sleep_at_least_sleeps_again_when_woken_early(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time as real_time
+
+    from poli_page import _transport
+
+    real_sleep = real_time.sleep
+    # Every sleep of 0.2 s or more wakes 50 ms early.
+    monkeypatch.setattr(_transport.time, "sleep", lambda s: real_sleep(s - 0.05 if s >= 0.2 else s))
+    start = real_time.perf_counter()
+    _transport.sleep_at_least(0.3)
+    assert real_time.perf_counter() - start >= 0.3
+
+
+async def test_async_sleep_at_least_sleeps_again_when_woken_early(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    import time as real_time
+
+    from poli_page import _transport
+
+    real_sleep = asyncio.sleep
+
+    async def early(s: float) -> None:
+        await real_sleep(s - 0.05 if s >= 0.2 else s)
+
+    monkeypatch.setattr(_transport.asyncio, "sleep", early)
+    start = real_time.perf_counter()
+    await _transport.async_sleep_at_least(0.3)
+    assert real_time.perf_counter() - start >= 0.3

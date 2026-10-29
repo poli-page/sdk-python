@@ -58,8 +58,11 @@ Conformance with the Poli Page API contract v1.1.0
 ### Fixed
 
 - The "Retries and idempotency" docs page no longer says the API deduplicates on
-  `Idempotency-Key`: it does not, so a render retried after a late 5xx can store a second
-  document. The SDK sends one stable key across the retries of a call.
+  `Idempotency-Key`: it does not, so a render retried after a late 5xx, a `timeout` or a
+  `network_error` can store a second document. The SDK sends one stable key across the
+  retries of a call.
+- A retry wait is never shorter than asked: a sleep that wakes early sleeps again for the
+  rest of the delay (sync and async clients).
 - A `Retry-After: nan` header no longer makes the sync client's retry sleep raise a raw
   `ValueError`: the value is unparseable and the backoff applies.
 
