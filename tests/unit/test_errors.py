@@ -236,7 +236,7 @@ class TestClassify:
 
 
 class TestErrorCodes:
-    # The 31 API codes of the environments contract, each exposed as a constant
+    # The 32 API codes of the environments contract, each exposed as a constant
     # whose value is its own name.
     API_CODES: frozenset[str] = frozenset(
         {
