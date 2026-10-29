@@ -65,3 +65,12 @@ jobs:
           files: coverage.xml
           fail_ci_if_error: false
           use_oidc: true
+
+  # One check that sums up the PR jobs: the name the `main` ruleset requires for merges
+  # (the poli-page auto loop's gate waits for a check named `ci`).
+  ci:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.test.result }}" = success

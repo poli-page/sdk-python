@@ -38,7 +38,7 @@ reviews:
     include_all_authors: false
   auto_review:
     enabled: true
-    drafts: false
+    drafts: true
     # Every push of a fix round must be reviewed, and never auto-paused (the loop allows up to 5 rounds).
     auto_incremental_review: true
     auto_pause_after_reviewed_commits: 0
