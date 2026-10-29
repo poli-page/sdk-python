@@ -27,6 +27,12 @@ updates:
       time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
+    # Dependabot waits 3 days after a release by default. The API contract is
+    # exempt so its PR arrives the next day; other actions keep the wait.
+    cooldown:
+      default-days: 3
+      exclude:
+        - "poli-page/api-contract"
     groups:
       # The API contract gets PRs of its own: a contract bump shows what the
       # API change breaks, never mixed with other action bumps.
