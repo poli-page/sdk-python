@@ -533,9 +533,11 @@ def _describe_requests(
             except ValueError:
                 item["json"] = f"body is not JSON: {req.body!r}"
         if "minGapMsBefore" in want:
-            gap_ms = (req.at - recorded[i - 1].at) * 1000 if i > 0 else 0.0
+            # N-DURATION-MS: the measured gap is compared in integer milliseconds, so a
+            # timer waking a fraction of a millisecond early is not a short wait.
+            gap_ms = round((req.at - recorded[i - 1].at) * 1000) if i > 0 else 0
             min_gap = want["minGapMsBefore"]
-            item["minGapMsBefore"] = min_gap if gap_ms >= min_gap else f"only {gap_ms:.1f} ms"
+            item["minGapMsBefore"] = min_gap if gap_ms >= min_gap else f"only {gap_ms} ms"
         out.append(item)
     return out
 
