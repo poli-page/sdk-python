@@ -128,6 +128,8 @@ authenticated preview are gone. Breaking, with no deprecation window. See
 
 ### Added
 
+- Known error code `TEMPLATE_UNSAFE` (400): the template, a partial or an SVG asset holds an
+  injection attempt; `detail` names it. Not retried.
 - Error-code constants `PUBLISH_IN_PROGRESS`, `ENVIRONMENT_MISMATCH`,
   `PROJECT_NOT_IN_ENVIRONMENT`, `TEMPLATE_NOT_FOUND`, `DOCUMENT_GONE`, `ENVIRONMENT_PROTECTED`,
   `ORGANIZATION_PAYMENT_GRACE`, `EMPTY_DOCUMENT`, `STORAGE_ACCESS_DENIED`,

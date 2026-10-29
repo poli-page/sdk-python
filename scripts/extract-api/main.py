@@ -123,6 +123,7 @@ _RENDER_ERRORS: list[dict[str, str]] = [
     {"code": "PROJECT_NOT_IN_ENVIRONMENT", "when": "The project is not published in the key's environment."},
     {"code": "TEMPLATE_NOT_FOUND", "when": "The template is not in the project's copy published in the key's environment."},
     {"code": "TEMPLATE_ERROR", "when": "The engine rejected the template or its data."},
+    {"code": "TEMPLATE_UNSAFE", "when": "The template, a partial or an SVG asset holds an injection attempt; `detail` names it. Not retryable."},
     {"code": "EMPTY_DOCUMENT", "when": "The render produced zero pages."},
     {"code": "RENDER_BODY_TOO_LARGE", "when": "The request body is over the API's size limit (413)."},
     {"code": "DOCUMENT_TOO_LARGE", "when": "The document exceeds an engine cap (413)."},
@@ -626,7 +627,7 @@ def _errors_mdx() -> str:
 
         ## Validation
 
-        <ErrorTable errors={[{"code":"VALIDATION_ERROR","when":"The request body failed validation, for example thumbnail options out of bounds."},{"code":"MISSING_DATA","when":"Request body lacks the required `data` field."},{"code":"MISSING_TEMPLATE_SLUG","when":"Template slug is missing."},{"code":"PROJECT_REQUIRED_FOR_DOCUMENT","when":"Input without a `project` on a render method. Rejected locally before any HTTP call."},{"code":"TEMPLATE_ERROR","when":"The engine rejected the template or its data."},{"code":"EMPTY_DOCUMENT","when":"The render produced zero pages."},{"code":"ENVIRONMENT_MISMATCH","when":"A caller named another environment than the key's. This SDK never sends one."},{"code":"RENDER_BODY_TOO_LARGE","when":"The request body is over the API's size limit (413)."},{"code":"DOCUMENT_TOO_LARGE","when":"The document exceeds an engine cap (413)."}]} />
+        <ErrorTable errors={[{"code":"VALIDATION_ERROR","when":"The request body failed validation, for example thumbnail options out of bounds."},{"code":"MISSING_DATA","when":"Request body lacks the required `data` field."},{"code":"MISSING_TEMPLATE_SLUG","when":"Template slug is missing."},{"code":"PROJECT_REQUIRED_FOR_DOCUMENT","when":"Input without a `project` on a render method. Rejected locally before any HTTP call."},{"code":"TEMPLATE_ERROR","when":"The engine rejected the template or its data."},{"code":"TEMPLATE_UNSAFE","when":"The template, a partial or an SVG asset holds an injection attempt; `detail` names it. Not retryable."},{"code":"EMPTY_DOCUMENT","when":"The render produced zero pages."},{"code":"ENVIRONMENT_MISMATCH","when":"A caller named another environment than the key's. This SDK never sends one."},{"code":"RENDER_BODY_TOO_LARGE","when":"The request body is over the API's size limit (413)."},{"code":"DOCUMENT_TOO_LARGE","when":"The document exceeds an engine cap (413)."}]} />
 
         ## Rate and quota
 
