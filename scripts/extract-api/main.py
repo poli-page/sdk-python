@@ -126,12 +126,14 @@ _RENDER_ERRORS: list[dict[str, str]] = [
     {"code": "EMPTY_DOCUMENT", "when": "The render produced zero pages."},
     {"code": "RENDER_BODY_TOO_LARGE", "when": "The request body is over the API's size limit (413)."},
     {"code": "DOCUMENT_TOO_LARGE", "when": "The document exceeds an engine cap (413)."},
-    {"code": "QUOTA_EXCEEDED", "when": "Monthly quota reached. Retryable."},
+    {"code": "QUOTA_EXCEEDED", "when": "Monthly quota reached (429). Not retried: it lasts until the monthly reset."},
+    {"code": "OVERAGE_CAP_EXCEEDED", "when": "Overage cap reached on a paid tier (429). Not retried: it lasts until the monthly reset."},
     {"code": "RATE_LIMIT_EXCEEDED", "when": "Per-key render rate limit reached. Retryable."},
     {"code": "PUBLISH_IN_PROGRESS", "when": "The project is being published into this environment (503 with `Retry-After`). Retryable."},
     {"code": "RENDER_TIMEOUT", "when": "The engine's time budget expired (504). Retryable."},
     {"code": "timeout", "when": "Request exceeded the configured `timeout`. Retryable."},
     {"code": "network_error", "when": "TCP/TLS-level failure reaching the API. Retryable."},
+    {"code": "STORAGE_ACCESS_DENIED", "when": "The organization's own storage bucket refuses access (502). Not retried: restore the bucket role, then call again."},
     {"code": "INTERNAL_ERROR", "when": "The API returned 5xx. Retryable."},
 ]
 _DOWNLOAD_FAILED = {"code": "DOWNLOAD_FAILED", "when": "The S3 second-hop download for the rendered PDF failed."}
@@ -608,7 +610,7 @@ def _errors_mdx() -> str:
 
         ## SDK-internal
 
-        <ErrorTable errors={[{"code":"invalid_options","when":"Constructor arguments are missing or malformed."},{"code":"network_error","when":"TCP/TLS-level failure reaching the API. Retryable."},{"code":"timeout","when":"The request did not complete within `timeout`. Retryable."},{"code":"DOWNLOAD_FAILED","when":"The S3 second-hop download failed. Not retried by the SDK."}]} />
+        <ErrorTable errors={[{"code":"invalid_options","when":"Constructor arguments are missing or malformed (`apiKey is required`)."},{"code":"network_error","when":"TCP/TLS-level failure reaching the API (`Network request failed`; the httpx exception is the `__cause__`). Retryable."},{"code":"timeout","when":"The request did not complete within `timeout` (`Request timed out after <ms>ms`). Retryable."},{"code":"DOWNLOAD_FAILED","when":"The S3 second-hop download failed: `Failed to download PDF: HTTP <status>` with the storage `status`, or `Failed to download PDF: network error` without one. Not retried by the SDK."}]} />
 
         ## Authentication
 
@@ -628,11 +630,11 @@ def _errors_mdx() -> str:
 
         ## Rate and quota
 
-        <ErrorTable errors={[{"code":"RATE_LIMIT_EXCEEDED","when":"Per-key render rate limit reached. Retryable."},{"code":"QUOTA_EXCEEDED","when":"Monthly quota reached. Retryable."},{"code":"OVERAGE_CAP_EXCEEDED","when":"Overage cap reached (paid tiers). Retryable."}]} />
+        <ErrorTable errors={[{"code":"RATE_LIMIT_EXCEEDED","when":"Per-key render rate limit reached. Retryable."},{"code":"QUOTA_EXCEEDED","when":"Monthly quota reached. Not retryable: it lasts until the monthly reset."},{"code":"OVERAGE_CAP_EXCEEDED","when":"Overage cap reached (paid tiers). Not retryable: it lasts until the monthly reset."}]} />
 
         ## Server
 
-        <ErrorTable errors={[{"code":"INTERNAL_ERROR","when":"Unexpected server error. Retryable."},{"code":"STORAGE_ACCESS_DENIED","when":"The organization's own storage bucket refuses access (502). Retryable."},{"code":"PUBLISH_IN_PROGRESS","when":"The project is being published into this environment (503 with `Retry-After`). Retryable."},{"code":"RENDER_TIMEOUT","when":"The engine's time budget expired (504). Retryable."}]} />
+        <ErrorTable errors={[{"code":"INTERNAL_ERROR","when":"Unexpected server error, or an error answer whose body is not JSON (message `HTTP <status>`, real status kept). Retryable."},{"code":"STORAGE_ACCESS_DENIED","when":"The organization's own storage bucket refuses access (502). Not retryable: restore the bucket role, then call again."},{"code":"PUBLISH_IN_PROGRESS","when":"The project is being published into this environment (503 with `Retry-After`). Retryable."},{"code":"RENDER_TIMEOUT","when":"The engine's time budget expired (504). Retryable."}]} />
         """
     )
 

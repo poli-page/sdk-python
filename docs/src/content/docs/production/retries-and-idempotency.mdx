@@ -7,11 +7,12 @@ The Poli Page Python SDK retries transient failures automatically. Render operat
 
 ## Default retry policy
 
-- `network_error`, `timeout`, 5xx responses, and 429 (`QUOTA_EXCEEDED`) are retried.
-- Up to `max_retries` attempts (default `2` — three total attempts).
-- Exponential backoff starting at `retry_delay` seconds (default `0.5`), doubling each attempt, with `[0.5, 1.5)` jitter.
-- Honors `Retry-After` and `Retry-After-Ms` (sub-second precision wins), capped at 30 seconds.
-- Caller cancellation (`asyncio.CancelledError`, `KeyboardInterrupt`) is never retried.
+- `network_error`, `timeout`, 5xx responses (such as `503 PUBLISH_IN_PROGRESS`) and 429 responses (such as `RATE_LIMIT_EXCEEDED`) are retried.
+- `QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED` (429) and `STORAGE_ACCESS_DENIED` (502) are **not** retried: they last until the monthly reset or until the bucket access is restored, so the SDK raises them at once and `is_retryable()` is `False`.
+- Up to `max_retries` retries (default `2` — three total attempts); after the last one, the last error is raised.
+- Exponential backoff starting at `retry_delay` seconds (default `0.5`), doubling each attempt, with a random factor in `[0.5, 1.5)`.
+- Honors the `Retry-After` response header when present (integer seconds or an HTTP-date), clamped to 0–30 seconds, without jitter. `Retry-After-Ms` is ignored.
+- Caller cancellation (`asyncio.CancelledError`, `KeyboardInterrupt`) is never retried. The presigned-URL download is never retried.
 
 ## Disabling retries
 

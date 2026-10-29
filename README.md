@@ -289,11 +289,11 @@ PoliPageError                       # base — catches everything
 
 Predicate helpers are kept for cross-language parity:
 
-- `err.is_auth_error()` — 401 or 403
-- `err.is_rate_limit_error()` — 429
-- `err.is_validation_error()` — 400
-- `err.is_network_error()` — any `APIConnectionError` (includes timeout)
-- `err.is_retryable()` — 5xx, 429, network, or timeout
+- `err.is_auth_error()` — `status` 401 or 403
+- `err.is_rate_limit_error()` — `status` 429
+- `err.is_validation_error()` — `status` 400
+- `err.is_network_error()` — `code` `network_error` or `timeout` (every `APIConnectionError`)
+- `err.is_retryable()` — 5xx, 429, network, or timeout, except `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED`
 
 For lifecycle and billing failures, route the user to actionable messages:
 
@@ -391,7 +391,7 @@ client = PoliPage(
 
 ## Retries & idempotency
 
-The SDK retries on **5xx**, **429**, **network errors**, and **timeouts**. Backoff is exponential (`retry_delay * 2^N`) with jitter in `[0.5, 1.5)`, capped by `Retry-After` (seconds, HTTP-date) or `Retry-After-Ms` when the server provides them — capped further at 30 s. Every POST sends an auto-generated `Idempotency-Key` (UUID v4); pass `idempotency_key` in the input dict to override.
+The SDK retries on **5xx**, **429**, **network errors**, and **timeouts**, except `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` (429) and `STORAGE_ACCESS_DENIED` (502), which waiting cannot fix: those are raised at once. Before retry `n` (1-based) the SDK waits `retry_delay * 2^(n-1) * j`, with `j` a random factor in `[0.5, 1.5)`; a `Retry-After` header (integer seconds or HTTP-date, clamped to 30 s) replaces it when the server sends one. `Retry-After-Ms` is ignored. Every POST sends an auto-generated `Idempotency-Key` (UUID v4); pass `idempotency_key` in the input dict to override.
 
 ## Type system
 

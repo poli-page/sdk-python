@@ -5,6 +5,14 @@ description: Upgrade guides for moving between breaking versions of the Python S
 
 This page tracks breaking changes between versions of `poli-page`. For the full per-release diff, see the [changelog](../changelog/).
 
+## From 0.10.0 to the next release (unreleased)
+
+The SDK now follows the retry policy and the error messages of the [Poli Page API contract](https://github.com/poli-page/api-contract). The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).
+
+- `QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED` (429) and `STORAGE_ACCESS_DENIED` (502) are no longer retried, and `is_retryable()` returns `False` for them. A queue that requeues on `is_retryable()` now drops these errors at once: handle them by code. See [Retries and idempotency](../../production/retries-and-idempotency/).
+- `Retry-After-Ms` is ignored: only `Retry-After` sets the delay before a retry.
+- The SDK-side messages are the specification's exact texts (`Network request failed`, `Request timed out after <ms>ms`, `Failed to download PDF: HTTP <status>`, `Failed to download PDF: network error`, `HTTP <status>` for a non-JSON error body, `apiKey is required`, `project is required`). Match `err.code`, not the message. See [Errors](../../production/errors/).
+
 ## From 0.9.x to 0.10.0
 
 0.10.0 moves the SDK to the environments contract. It is a breaking change with no deprecation window; while the SDK is on 0.x, a breaking change bumps the minor version. The full guide, with before/after code, is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).

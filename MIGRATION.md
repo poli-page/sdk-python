@@ -5,6 +5,49 @@ This file documents breaking changes between versions of `poli-page`
 while it is on 0.x, a breaking change bumps the minor version, and every
 breaking change comes with an entry here.
 
+## From 0.10.0 to the next release (unreleased)
+
+The SDK now follows the retry policy and the error messages of the Poli Page
+API contract.
+
+### Three codes are no longer retried
+
+`QUOTA_EXCEEDED` and `OVERAGE_CAP_EXCEEDED` (429) and `STORAGE_ACCESS_DENIED`
+(502) are raised at once, and `is_retryable()` returns `False` for them. A queue
+that requeues on `is_retryable()` now drops these errors: handle them by code
+instead, for example hold quota errors until the monthly reset and alert on
+`STORAGE_ACCESS_DENIED` until the bucket role is restored. `is_rate_limit_error()`
+is still `True` for the two 429s, and `except RateLimitError` still catches them.
+
+```python
+# 0.10.0
+except PoliPageError as err:
+    if err.is_retryable():  # was True for QUOTA_EXCEEDED
+        requeue(job)
+
+# next release
+except PoliPageError as err:
+    if err.code in (error_codes.QUOTA_EXCEEDED, error_codes.OVERAGE_CAP_EXCEEDED):
+        hold_until_monthly_reset(job)
+    elif err.is_retryable():
+        requeue(job)
+```
+
+### `Retry-After-Ms` is ignored
+
+Only `Retry-After` (integer seconds or an HTTP-date, clamped to 30 s) sets the
+delay before a retry.
+
+### Messages
+
+If you match error messages, match `err.code` instead: the SDK-side messages
+are now the specification's exact texts (`apiKey is required`,
+`Network request failed`, `Request timed out after <ms>ms`,
+`Failed to download PDF: HTTP <status>`, `Failed to download PDF: network error`,
+`HTTP <status>` for a non-JSON error body, `project is required`). The httpx
+exception behind a network, timeout or download failure is the error's
+`__cause__`.
+
 ## From 0.9.x to 0.10.0
 
 0.10.0 moves the SDK to the environments contract. Nobody depended on the old

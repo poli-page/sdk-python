@@ -29,6 +29,17 @@ python -m build            # build wheel + sdist into dist/
 The `dev` extra installs `pytest`, `pytest-asyncio`, `respx`, `ruff`,
 `pyright`, `mypy`, and `build`. No other dev tooling is required.
 
+### API contract tests
+
+CI also runs `tests/test_contract.py` against the
+[Poli Page API contract](https://github.com/poli-page/api-contract), pinned by
+commit in `.github/workflows/ci.yml`: every SDK case of `contract.json` runs
+against a local mock server, with both the sync and the async client. Without
+`POLI_CONTRACT` the file is skipped locally (and fails in CI). To run it,
+download that version's `contract.json` and run
+`POLI_CONTRACT=<path to contract.json> pytest`. Case ids allowed to fail are
+listed, with the reason, in `tests/contract-skip.json`.
+
 ## API reference site
 
 The reference at https://docs.poli.page/reference/sdk/python/ is built
