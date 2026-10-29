@@ -70,9 +70,6 @@ TEST_API_KEY = "pp_sandbox_00000000000000000000000000000000"
 
 SKIP_LIST_PATH = Path(__file__).with_name("contract-skip.json")
 
-#: The download's network-error message, for a contract that does not state it yet.
-DEFAULT_DOWNLOAD_NETWORK_MESSAGE = "Failed to download PDF: network error"
-
 
 class ContractError(Exception):
     """The contract file, or the skip list, is not something this test can run."""
@@ -672,10 +669,7 @@ else:
             "PROJECT_REQUIRED_FOR_DOCUMENT": MESSAGE_PROJECT_REQUIRED,
         }
         assert messages == {code: errors[code]["message"] for code in messages}
-        assert (
-            download.get("networkMessage", DEFAULT_DOWNLOAD_NETWORK_MESSAGE)
-            == MESSAGE_DOWNLOAD_FAILED_NETWORK
-        )
+        assert download["networkMessage"] == MESSAGE_DOWNLOAD_FAILED_NETWORK
         sdk_codes = set(errors) - ({"aborted"} if not RUNS_CANCELLATION else set())
         assert sdk_codes == set(messages), "SDK codes of the policy this SDK raises"
 
@@ -697,9 +691,10 @@ else:
 
     @pytest.mark.parametrize(("case", "flavor"), _params())
     def test_case(case: dict[str, Any], flavor: str, monkeypatch: pytest.MonkeyPatch) -> None:
-        # The client falls back to these when an option is empty; a case sets every option.
-        monkeypatch.delenv("POLI_PAGE_API_KEY", raising=False)
-        monkeypatch.delenv("POLI_PAGE_BASE_URL", raising=False)
+        # The client reads these only for an omitted option, and a case sets every option:
+        # an environment that defines them must not change the outcome.
+        monkeypatch.setenv("POLI_PAGE_API_KEY", "pp_sandbox_ffffffffffffffffffffffffffffffff")
+        monkeypatch.setenv("POLI_PAGE_BASE_URL", "http://127.0.0.1:9")
         reason = SKIP.get(case["id"])
         if reason is None:
             _run_case(case, flavor)
