@@ -5,7 +5,6 @@ Thanks for your interest. A few short rules:
 ## Working method
 
 We use **TDD**: write a failing test first, then the minimum code to pass.
-See the platform `agent-guide.md` for the full methodology.
 
 ## Commit messages
 

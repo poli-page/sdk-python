@@ -25,7 +25,7 @@ except PoliPageError as err:
     if err.is_retryable():  # was True for QUOTA_EXCEEDED
         requeue(job)
 
-# next release
+# 0.11.0
 except PoliPageError as err:
     if err.code in (error_codes.QUOTA_EXCEEDED, error_codes.OVERAGE_CAP_EXCEEDED):
         hold_until_monthly_reset(job)
@@ -42,7 +42,7 @@ is set. Pass `api_key=None` (or omit it) to read the environment variable.
 # 0.10.0: an empty value silently fell back to POLI_PAGE_API_KEY
 client = PoliPage(api_key=os.environ.get("MY_KEY", ""))
 
-# next release
+# 0.11.0
 client = PoliPage(api_key=os.environ.get("MY_KEY"))  # None -> POLI_PAGE_API_KEY
 ```
 
