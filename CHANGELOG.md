@@ -9,9 +9,11 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-30
+
 Conformance with the Poli Page API contract v1.3.0
 ([poli-page/api-contract](https://github.com/poli-page/api-contract)). See
-[MIGRATION.md](MIGRATION.md#from-0100-to-the-next-release-unreleased).
+[MIGRATION.md](MIGRATION.md#from-0100-to-0110).
 
 ### Changed
 

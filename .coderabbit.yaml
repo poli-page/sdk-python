@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-# CodeRabbit config for poli-page repos. PRs here are mostly opened and fixed by automated agents
-# (the poli-page auto loop and issue pipeline), which read CodeRabbit's findings and its commit status.
+# CodeRabbit config for poli-page repos. PRs here are mostly opened and fixed by automated agents,
+# which read CodeRabbit's findings and its commit status.
 language: en-US
 early_access: false
 reviews:
