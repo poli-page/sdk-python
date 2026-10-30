@@ -47,8 +47,6 @@ bin/
 demo/output-sync/
 demo/output-async/
 
-# Local agent config
-.claude/
 
 # Distribution artifacts
 dist/
@@ -68,7 +66,6 @@ docs/src/content/docs/reference/
 
 # Extractor cache
 scripts/extract-api/.cache/
-CLAUDE.md
 docs/plan/
 docs/spec/
 sdk-*-plan.md
