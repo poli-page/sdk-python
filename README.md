@@ -104,7 +104,7 @@ render_to_file(
 )
 ```
 
-`render_to_file` streams response bytes directly to disk (bounded memory). Creates parent directories; overwrites existing files. The async variant is `poli_page.fs.async_render_to_file`.
+`render_to_file` streams response bytes directly to disk (bounded memory). Creates parent directories and replaces an existing file, through a temporary file renamed over the target once the PDF is complete: when the render, the download or the write fails, the target is left as it was. A file that cannot be written raises `PoliPageError` with the code `io_error` and the message `Failed to write PDF: <reason>`, the `OSError` as its `__cause__`. The async variant is `poli_page.fs.async_render_to_file`.
 
 ### Try it locally — runnable demos
 
@@ -168,6 +168,8 @@ client.documents.delete(doc.document_id)
 
 The presigned URL has a 15-minute TTL. If `download_pdf()` fails with `code='DOWNLOAD_FAILED'` (HTTP 403 from S3), call `documents.get(id)` to refresh and retry. `DOWNLOAD_FAILED` is never retryable, whatever the storage status: the SDK does not retry it and `is_retryable()` is `False`.
 
+The download is bounded by the client's `timeout` (or the render call's `timeout`): `render.pdf` and `download_pdf()` bound the whole download, and `render.pdf_stream` uses it as an idle timeout, the wait for the answer and each gap between two chunks, so a large PDF read at your pace is not cut off. Past it, the error is `DOWNLOAD_FAILED` with the message `Failed to download PDF: timeout`.
+
 ## Authentication & environments
 
 An API key belongs to exactly one environment of your organization, and its text names that environment: a key is `pp_{env}_{32 lowercase hex}`, matching
@@ -221,7 +223,7 @@ Every method above also exists on `AsyncPoliPage` (with `async def` / `await`); 
 | `base_url` | str | `https://api.poli.page` | API base URL |
 | `max_retries` | int | 2 | Max retry attempts on retryable errors |
 | `retry_delay` | float (seconds) | 0.5 | Base delay before the first retry |
-| `timeout` | float (seconds) | 60.0 | Per-request timeout |
+| `timeout` | float (seconds) | 60.0 | Per-request timeout; also bounds the PDF download |
 | `on_retry` | callable | — | Called before each retry sleep with a `RetryEvent` |
 | `on_error` | callable | — | Called when a call terminates in error with a `PoliPageError` |
 | `http_client` | `httpx.Client` (or `AsyncClient`) | — | Inject a pre-configured httpx client (proxies, custom TLS, shared pool) |
@@ -275,6 +277,7 @@ The hierarchy:
 PoliPageError                       # base — catches everything
 ├── APIConnectionError              # transport-level (no status)
 │   └── APITimeoutError             # per-request deadline exceeded
+├── InvalidResponseError            # a 2xx whose body is not JSON
 └── APIStatusError                  # any non-2xx (carries status)
     ├── BadRequestError             (400)
     ├── AuthenticationError         (401)
@@ -293,7 +296,9 @@ Predicate helpers are kept for cross-language parity:
 - `err.is_rate_limit_error()` — `status` 429
 - `err.is_validation_error()` — `status` 400
 - `err.is_network_error()` — `code` `network_error` or `timeout` (every `APIConnectionError`)
-- `err.is_retryable()` — 5xx, 429, network, or timeout, except `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED`, `STORAGE_ACCESS_DENIED` and `DOWNLOAD_FAILED`
+- `err.is_retryable()` — 5xx, 429, network, or timeout, except `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED`, `STORAGE_ACCESS_DENIED`, `DOWNLOAD_FAILED`, `invalid_response` and `io_error`
+
+A 2xx answer whose body is not JSON (a proxy or a captive portal answering instead of the API) raises `InvalidResponseError`, a direct `PoliPageError` subclass: code `invalid_response`, the message `Invalid response: HTTP <status> body is not JSON`, the real 2xx as `status`. It is not retried. `err.to_payload()` returns exactly `code`, `message`, `status` and `requestId`, with `status` 502 for it (503 for `network_error`, 504 for `timeout`).
 
 For lifecycle and billing failures, route the user to actionable messages:
 

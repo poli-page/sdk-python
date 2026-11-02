@@ -54,14 +54,23 @@ class RenderSync:
         return _build_descriptor(self._client, raw)
 
     def pdf(self, input: RenderInput) -> bytes:
-        """Render a PDF and return its raw bytes (two HTTP calls: render + S3)."""
+        """Render a PDF and return its raw bytes (two HTTP calls: render + download).
+
+        The download is bounded as a whole by the call's `timeout`, else the client's.
+        """
         descriptor = self.document(input)
-        return descriptor.download_pdf()
+        return self._client._fetch_bytes(  # pyright: ignore[reportPrivateUsage]
+            descriptor.presigned_pdf_url, input.get("timeout")
+        )
 
     def pdf_stream(self, input: RenderInput) -> _PdfStreamContext:
-        """Render a PDF and return a streaming context manager (plan §5.6)."""
+        """Render a PDF and return a streaming context manager.
+
+        The call's `timeout`, else the client's, bounds the wait for the download's answer
+        and each gap between two chunks, not the whole download.
+        """
         descriptor = self.document(input)
-        return _PdfStreamContext(self._client, descriptor.presigned_pdf_url)
+        return _PdfStreamContext(self._client, descriptor.presigned_pdf_url, input.get("timeout"))
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +96,9 @@ class RenderAsync:
 
     async def pdf(self, input: RenderInput) -> bytes:
         descriptor = await self.document(input)
-        return await descriptor.download_pdf()
+        return await self._client._fetch_bytes(  # pyright: ignore[reportPrivateUsage]
+            descriptor.presigned_pdf_url, input.get("timeout")
+        )
 
     def pdf_stream(self, input: RenderInput) -> _AsyncPdfStreamCoroutineCM:
         """Return an async-with-able object that fetches the descriptor lazily.
@@ -160,15 +171,16 @@ class _PdfStreamContext:
     closed unconditionally on `__exit__`.
     """
 
-    __slots__ = ("_client", "_stream_cm", "_url")
+    __slots__ = ("_client", "_stream_cm", "_timeout", "_url")
 
-    def __init__(self, client: PoliPage, url: str) -> None:
+    def __init__(self, client: PoliPage, url: str, timeout: float | None = None) -> None:
         self._client = client
         self._url = url
+        self._timeout = timeout
         self._stream_cm: object | None = None
 
     def __enter__(self) -> Iterator[bytes]:
-        cm = self._client._stream_bytes(self._url)  # pyright: ignore[reportPrivateUsage]
+        cm = self._client._stream_bytes(self._url, self._timeout)  # pyright: ignore[reportPrivateUsage]
         self._stream_cm = cm
         return cm.__enter__()
 
@@ -202,7 +214,9 @@ class _AsyncPdfStreamCoroutineCM:
             "POST", PATH_RENDER, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
         descriptor = _build_async_descriptor(self._client, raw)
-        cm = self._client._stream_bytes(descriptor.presigned_pdf_url)  # pyright: ignore[reportPrivateUsage]
+        cm = self._client._stream_bytes(  # pyright: ignore[reportPrivateUsage]
+            descriptor.presigned_pdf_url, timeout
+        )
         self._stream_cm = cm
         return await cm.__aenter__()
 

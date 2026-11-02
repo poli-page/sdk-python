@@ -465,3 +465,59 @@ class TestDownloadDroppedMidBody:
                 chunks.append(chunk)
         assert chunks == [b"%PDF-1.4 partial"]
         self._assert_network_download_failed(excinfo.value)
+
+
+class TestDownloadTimeoutValue:
+    """The download gets the API attempt's timeout value, handed to httpx as it is.
+
+    A value of 0 or less adds no deadline of the SDK's own: httpx decides what it means, as
+    for an API attempt (the mocked transport here applies none, so the download succeeds).
+    """
+
+    @staticmethod
+    def _download_timeout(route: respx.Route) -> object:
+        return route.calls[-1].request.extensions["timeout"]
+
+    @pytest.mark.parametrize("timeout", [0, -1, 7])
+    @respx.mock
+    def test_sync(self, timeout: float) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        pdf = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, timeout=timeout)
+        expected = {"connect": timeout, "read": timeout, "write": timeout, "pool": timeout}
+
+        assert client.render.pdf(PROJECT_MODE_INPUT).startswith(b"%PDF")  # type: ignore[arg-type]
+        assert self._download_timeout(pdf) == expected
+        with client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks:  # type: ignore[arg-type]
+            assert b"".join(chunks).startswith(b"%PDF")
+        assert self._download_timeout(pdf) == expected
+
+    @pytest.mark.parametrize("timeout", [0, -1, 7])
+    @respx.mock
+    async def test_async(self, timeout: float) -> None:
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        pdf = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        expected = {"connect": timeout, "read": timeout, "write": timeout, "pool": timeout}
+        async with AsyncPoliPage(
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, timeout=timeout
+        ) as client:
+            assert (await client.render.pdf(PROJECT_MODE_INPUT)).startswith(b"%PDF")  # type: ignore[arg-type]
+            assert self._download_timeout(pdf) == expected
+            async with client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks:  # type: ignore[arg-type]
+                assert b"".join([c async for c in chunks]).startswith(b"%PDF")
+            assert self._download_timeout(pdf) == expected
+
+    @respx.mock
+    def test_an_injected_http_client_gets_the_client_timeout(self) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        pdf = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        client = PoliPage(
+            api_key="pp_sandbox_abc",
+            base_url=TEST_BASE_URL,
+            timeout=3,
+            http_client=httpx.Client(timeout=None),
+        )
+        client.render.document(PROJECT_MODE_INPUT).download_pdf()  # type: ignore[arg-type]
+        assert self._download_timeout(pdf) == {"connect": 3, "read": 3, "write": 3, "pool": 3}

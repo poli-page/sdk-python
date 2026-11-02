@@ -62,7 +62,8 @@ class RenderInput(TypedDict, total=False):
     Only `project`, `template`, `data`, `metadata`, `format`, `orientation` and
     `locale` reach the request body; any other key is dropped.
     `idempotency_key` becomes the `Idempotency-Key` header and `timeout` is a
-    per-call deadline.
+    per-call deadline, in seconds: it bounds each API attempt and the PDF
+    download of `render.pdf` / `render.pdf_stream`, in place of the client's.
     """
 
     project: Required[str]
@@ -170,8 +171,9 @@ class DocumentDescriptor(_DocumentDescriptorBase):
     def download_pdf(self) -> bytes:
         """Fetch the PDF bytes (sync) from `presigned_pdf_url`.
 
-        Raises `PoliPageError(code='DOWNLOAD_FAILED')` on non-2xx or network
-        failure. The S3 status (when present) is exposed via `err.status`.
+        The client's `timeout` bounds the whole download. Raises
+        `PoliPageError(code='DOWNLOAD_FAILED')` on a non-2xx, a network failure
+        or the timeout. The S3 status (when present) is exposed via `err.status`.
         """
         if self._client is None:
             raise PoliPageError(_NO_CLIENT_MESSAGE, code="invalid_options")
@@ -188,7 +190,10 @@ class AsyncDocumentDescriptor(_DocumentDescriptorBase):
     _client: AsyncPoliPage | None = field(default=None, repr=False, compare=False)
 
     async def download_pdf(self) -> bytes:
-        """Fetch the PDF bytes (async) from `presigned_pdf_url`."""
+        """Fetch the PDF bytes (async) from `presigned_pdf_url`.
+
+        The client's `timeout` bounds the whole download, as for the sync form.
+        """
         if self._client is None:
             raise PoliPageError(_NO_CLIENT_MESSAGE, code="invalid_options")
         return await self._client._fetch_bytes(self.presigned_pdf_url)  # pyright: ignore[reportPrivateUsage]

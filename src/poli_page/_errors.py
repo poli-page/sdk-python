@@ -13,14 +13,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from poli_page._constants import NON_RETRYABLE_CODES
+from poli_page._constants import (
+    HEADER_REQUEST_ID,
+    MESSAGE_INVALID_RESPONSE,
+    NON_RETRYABLE_CODES,
+)
 
 if TYPE_CHECKING:
     import httpx
 
-# An SDK code, not an API answer code: kept out of `NON_RETRYABLE_CODES`, which mirrors the
-# contract's `policy.nonRetryableCodes`.
-_DOWNLOAD_FAILED = "DOWNLOAD_FAILED"
+# SDK codes, not API answer codes: kept out of `NON_RETRYABLE_CODES`, which mirrors the
+# contract's `policy.nonRetryableCodes`. Waiting cannot fix any of them: a failed download
+# needs a fresh presigned URL, a 2xx that is not JSON comes from something between the SDK
+# and the API that answers the same way again, and a file that cannot be written stays so.
+_NEVER_RETRYABLE_SDK_CODES = frozenset({"DOWNLOAD_FAILED", "invalid_response", "io_error"})
 
 
 class PoliPageError(Exception):
@@ -76,15 +82,13 @@ class PoliPageError(Exception):
         return self.code in ("network_error", "timeout")
 
     def is_retryable(self) -> bool:
-        """A network error, a timeout, a 5xx or a 429 the SDK retries (SDK spec §9.1).
+        """A network error, a timeout, a 5xx or a 429 the SDK retries.
 
         `QUOTA_EXCEEDED`, `OVERAGE_CAP_EXCEEDED` and `STORAGE_ACCESS_DENIED` are
-        never retryable: waiting cannot fix them. Neither is `DOWNLOAD_FAILED`,
-        whatever the storage status (contract rule R-DOWNLOAD-NONRETRY).
+        never retryable: waiting cannot fix them. Neither are `DOWNLOAD_FAILED`,
+        whatever the storage status, `invalid_response` and `io_error`.
         """
-        if self.code in NON_RETRYABLE_CODES:
-            return False
-        if self.code == _DOWNLOAD_FAILED:
+        if self.code in NON_RETRYABLE_CODES or self.code in _NEVER_RETRYABLE_SDK_CODES:
             return False
         if self.is_network_error():
             return True
@@ -93,14 +97,15 @@ class PoliPageError(Exception):
     def to_payload(self) -> dict[str, Any]:
         """Canonical wire payload for framework integrations.
 
-        Returns `{code, message, status, requestId}`. Keys are camelCase by
-        design — this dict is wire format meant to be serialised as JSON and
-        forwarded to a client (D2 / Plan 0). Python attributes (`request_id`)
-        stay snake_case; only the payload surfaces camelCase.
+        Returns exactly the keys `code`, `message`, `status` and `requestId`, spelled
+        so in every Poli Page SDK: the dict is the HTTP body an integration answers
+        with. Python attributes (`request_id`) stay snake_case; only the payload
+        uses `requestId`.
 
-        `status` is the HTTP status from the API for `APIStatusError`, 503 for
-        `APIConnectionError`, 504 for `APITimeoutError`, and `None` for the
-        bare base class.
+        `status` is the API status, 503 for `network_error` (`APIConnectionError`),
+        504 for `timeout` (`APITimeoutError`) and 502 for `invalid_response`
+        (`InvalidResponseError`), whose own `status` stays the real 2xx; `None` when
+        unknown. It never changes the error's own `status` attribute.
         """
         return {
             "code": self.code,
@@ -128,6 +133,20 @@ class APITimeoutError(APIConnectionError):
 
     def _payload_status(self) -> int | None:
         return 504
+
+
+class InvalidResponseError(PoliPageError):
+    """A 2xx answer whose body is not JSON, from a method that expects JSON.
+
+    Code `invalid_response`, message `Invalid response: HTTP <status> body is not JSON`.
+    `status` is the real 2xx and `request_id` the answer's `x-request-id`. Such a body
+    usually comes from a proxy or a captive portal between the SDK and the API. Never
+    retried; the JSON decoding error is the `__cause__`.
+    """
+
+    def _payload_status(self) -> int | None:
+        # An integration must not answer an error with the 2xx it got.
+        return 502
 
 
 class APIStatusError(PoliPageError):
@@ -207,5 +226,16 @@ def classify(
         code=code,
         status=status,
         request_id=request_id,
+        response=response,
+    )
+
+
+def invalid_response_error(response: httpx.Response) -> InvalidResponseError:
+    """The `invalid_response` error for a 2xx `response` whose body is not JSON."""
+    return InvalidResponseError(
+        MESSAGE_INVALID_RESPONSE.format(status=response.status_code),
+        code="invalid_response",
+        status=response.status_code,
+        request_id=response.headers.get(HEADER_REQUEST_ID),
         response=response,
     )

@@ -19,6 +19,7 @@ from poli_page import (
     ConflictError,
     GoneError,
     InternalServerError,
+    InvalidResponseError,
     NotFoundError,
     PermissionDeniedError,
     PoliPageError,
@@ -166,6 +167,23 @@ class TestIsRetryable:
         err = BadRequestError("m", code="VALIDATION_ERROR", status=400)
         assert err.is_retryable() is False
 
+    def test_false_for_invalid_response(self) -> None:
+        err = InvalidResponseError(
+            "Invalid response: HTTP 200 body is not JSON", code="invalid_response", status=200
+        )
+        assert err.is_retryable() is False
+
+    @pytest.mark.parametrize("status", [None, 500, 503, 429])
+    def test_invalid_response_and_io_error_are_never_retryable(self, status: int | None) -> None:
+        # Whatever the status: the codes alone decide.
+        assert PoliPageError("m", code="invalid_response", status=status).is_retryable() is False
+        assert PoliPageError("m", code="io_error", status=status).is_retryable() is False
+
+    def test_false_for_io_error(self) -> None:
+        err = PoliPageError("Failed to write PDF: disk full", code="io_error")
+        assert err.is_retryable() is False
+        assert err.is_network_error() is False
+
     def test_false_for_aborted_base_error(self) -> None:
         # `aborted` doesn't have its own subclass: it's a bare PoliPageError
         # raised from the async cancellation handler. Per spec, never retryable.
@@ -194,6 +212,39 @@ class TestToPayload:
         err = APITimeoutError("slow", code="timeout")
         assert err.to_payload()["status"] == 504
         assert err.status is None
+
+    def test_invalid_response_uses_502_and_keeps_its_own_status(self) -> None:
+        err = InvalidResponseError(
+            "Invalid response: HTTP 200 body is not JSON",
+            code="invalid_response",
+            status=200,
+            request_id="req_1",
+        )
+        assert err.to_payload() == {
+            "code": "invalid_response",
+            "message": "Invalid response: HTTP 200 body is not JSON",
+            "status": 502,
+            "requestId": "req_1",
+        }
+        assert err.status == 200
+
+    def test_io_error_has_no_status(self) -> None:
+        err = PoliPageError("Failed to write PDF: disk full", code="io_error")
+        assert err.to_payload()["status"] is None
+
+    @pytest.mark.parametrize(
+        "err",
+        [
+            AuthenticationError("m", code="INVALID_API_KEY", status=401, request_id="r"),
+            APIConnectionError("m", code="network_error"),
+            APITimeoutError("m", code="timeout"),
+            InvalidResponseError("m", code="invalid_response", status=200),
+            PoliPageError("m", code="io_error"),
+            PoliPageError("m", code="DOWNLOAD_FAILED", status=403),
+        ],
+    )
+    def test_has_exactly_the_four_keys(self, err: PoliPageError) -> None:
+        assert list(err.to_payload()) == ["code", "message", "status", "requestId"]
 
     def test_request_id_uses_camelcase_wire_key(self) -> None:
         # D2 / Plan 0 — payload keys are wire format (camelCase).
@@ -326,6 +377,8 @@ class TestErrorCodes:
         assert error_codes.ABORTED == "aborted"
         assert error_codes.UNKNOWN_ERROR == "unknown_error"
         assert error_codes.DOWNLOAD_FAILED == "DOWNLOAD_FAILED"
+        assert error_codes.INVALID_RESPONSE == "invalid_response"
+        assert error_codes.IO_ERROR == "io_error"
 
     def test_storage_required_not_exposed(self) -> None:
         # plan §7.4 — STORAGE_REQUIRED was retired; do NOT ship as a constant.

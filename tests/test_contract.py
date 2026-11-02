@@ -34,11 +34,21 @@ from typing import Any, cast
 
 import pytest
 
-from poli_page import AsyncPoliPage, PoliPage, PoliPageError
+from poli_page import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncPoliPage,
+    InvalidResponseError,
+    PoliPage,
+    PoliPageError,
+)
 from poli_page._constants import (
     MESSAGE_DOWNLOAD_FAILED,
     MESSAGE_DOWNLOAD_FAILED_NETWORK,
+    MESSAGE_DOWNLOAD_FAILED_TIMEOUT,
     MESSAGE_INVALID_OPTIONS,
+    MESSAGE_INVALID_RESPONSE,
+    MESSAGE_IO_ERROR,
     MESSAGE_NETWORK_ERROR,
     MESSAGE_PROJECT_REQUIRED,
     MESSAGE_TIMEOUT,
@@ -668,12 +678,37 @@ else:
             "network_error": MESSAGE_NETWORK_ERROR,
             "timeout": MESSAGE_TIMEOUT,
             "DOWNLOAD_FAILED": MESSAGE_DOWNLOAD_FAILED,
+            "invalid_response": MESSAGE_INVALID_RESPONSE,
+            # `fileHelperOnly`: this SDK has the file helpers (`poli_page.fs`).
+            "io_error": MESSAGE_IO_ERROR,
             "PROJECT_REQUIRED_FOR_DOCUMENT": MESSAGE_PROJECT_REQUIRED,
         }
         assert messages == {code: errors[code]["message"] for code in messages}
         assert download["networkMessage"] == MESSAGE_DOWNLOAD_FAILED_NETWORK
+        assert download["timeoutMessage"] == MESSAGE_DOWNLOAD_FAILED_TIMEOUT
         sdk_codes = set(errors) - ({"aborted"} if not RUNS_CANCELLATION else set())
         assert sdk_codes == set(messages), "SDK codes of the policy this SDK raises"
+
+    def test_to_payload_matches_the_integration_policy() -> None:
+        # The SDK error each code of `implStatusForSdkCode` is raised as.
+        raised_as: dict[str, PoliPageError] = {
+            "network_error": APIConnectionError(MESSAGE_NETWORK_ERROR, code="network_error"),
+            "timeout": APITimeoutError("Request timed out after 1000ms", code="timeout"),
+            "invalid_response": InvalidResponseError(
+                "Invalid response: HTTP 200 body is not JSON",
+                code="invalid_response",
+                status=200,
+                request_id="req_1",
+            ),
+        }
+        statuses = cast(dict[str, int], POLICY["implStatusForSdkCode"])
+        assert set(raised_as) == set(statuses), "SDK codes with an integration status"
+        for code, err in raised_as.items():
+            payload = err.to_payload()
+            assert list(payload) == cast(list[str], POLICY["implErrorBody"]), code
+            assert payload["status"] == statuses[code], code
+        # The error's own status is unchanged: an invalid_response keeps its 2xx.
+        assert raised_as["invalid_response"].status == 200
 
     def test_retry_policy_matches() -> None:
         assert set(NON_RETRYABLE_CODES) == set(cast(list[str], POLICY["nonRetryableCodes"]))
