@@ -124,7 +124,8 @@ class TestSync:
     def test_delete_ignores_the_body(self) -> None:
         respx.delete(f"{BASE}/v1/documents/doc_1").mock(return_value=_not_json())
         client = PoliPage(api_key="pp_sandbox_x", base_url=BASE)
-        assert client.documents.delete("doc_1") is None
+        result = client.documents.delete("doc_1")
+        assert result is None
 
     @respx.mock
     def test_an_error_answer_that_is_not_json_is_still_internal_error(self) -> None:
@@ -158,5 +159,7 @@ class TestAsync:
         respx.get(f"{BASE}/v1/documents/doc_1/preview").mock(return_value=_not_json())
         respx.delete(f"{BASE}/v1/documents/doc_1").mock(return_value=_not_json())
         async with AsyncPoliPage(api_key="pp_sandbox_x", base_url=BASE) as client:
-            assert (await client.documents.preview("doc_1")).html == HTML
-            assert await client.documents.delete("doc_1") is None
+            preview = await client.documents.preview("doc_1")
+            deleted = await client.documents.delete("doc_1")
+        assert preview.html == HTML
+        assert deleted is None

@@ -14,9 +14,8 @@ import httpx
 import pytest
 import respx
 
-import poli_page.fs
 from poli_page import AsyncPoliPage, PoliPage, PoliPageError
-from poli_page.fs import async_render_to_file, render_to_file
+from poli_page.fs import _open_part, async_render_to_file, render_to_file
 
 TEST_BASE_URL = "https://test.example"
 PRESIGNED_URL = "https://presigned.example/x.pdf"
@@ -204,13 +203,12 @@ class _FullDisk:
 
 
 def _fail_writes(monkeypatch: pytest.MonkeyPatch, error: OSError) -> None:
-    real_open_part = poli_page.fs._open_part
 
     def open_part(target: Path) -> tuple[Path, object]:
-        part, file = real_open_part(target)
+        part, file = _open_part(target)
         return part, _FullDisk(file, error)
 
-    monkeypatch.setattr(poli_page.fs, "_open_part", open_part)
+    monkeypatch.setattr("poli_page.fs._open_part", open_part)
 
 
 def _leftovers(directory: Path) -> list[str]:

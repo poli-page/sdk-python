@@ -84,7 +84,7 @@ def _call_with_deadline(
     def work() -> None:
         try:
             value = fn(abandoned)
-        except BaseException as exc:
+        except BaseException as exc:  # handed to the caller, which raises it: never swallowed
             with lock:
                 failure.append(exc)
         else:
