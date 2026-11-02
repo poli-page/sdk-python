@@ -5,6 +5,80 @@ This file documents breaking changes between versions of `poli-page`
 while it is on 0.x, a breaking change bumps the minor version, and every
 breaking change comes with an entry here.
 
+## From 0.11.0 to 0.13.0
+
+The SDK now shares its major.minor with the Poli Page API, so there is no
+0.12. This release follows the API contract v0.13.0.
+
+### A 2xx whose body is not JSON is `invalid_response`
+
+It was a raw `json.JSONDecodeError`, which `except PoliPageError` did not
+catch. It is now an `InvalidResponseError` (a `PoliPageError`), code
+`invalid_response`, message `Invalid response: HTTP <status> body is not JSON`,
+with the real 2xx as `status`, the request id, and the `JSONDecodeError` as
+`__cause__`. It is not retried. In an integration, `to_payload()` answers 502
+for it.
+
+```python
+# 0.11.0
+except ValueError:  # json.JSONDecodeError: a proxy answered instead of the API
+    ...
+
+# 0.13.0
+except InvalidResponseError as err:  # from poli_page import InvalidResponseError
+    ...  # a proxy answered instead of the API; err.status is its 2xx
+```
+
+### `render_to_file()` raises `io_error`
+
+A file that cannot be written raised the `OSError` itself; it is now a
+`PoliPageError` with the code `io_error`, the message
+`Failed to write PDF: <reason>` and the `OSError` as `__cause__`. The same holds
+for `async_render_to_file()`.
+
+```python
+# 0.11.0
+except OSError:
+    ...
+
+# 0.13.0
+except PoliPageError as err:
+    if err.code == error_codes.IO_ERROR:
+        ...  # disk full, permissions, a missing mount; err.__cause__ is the OSError
+```
+
+The PDF now goes to a temporary file next to the target, renamed over it once
+complete, so a failure leaves the target as it was. A replaced file is a new
+file: it gets the permissions of a newly created file, not those of the file it
+replaces.
+
+### The PDF download is bounded by `timeout`
+
+The presigned-URL download now uses the client's `timeout` (60 s by default),
+or the render call's own `timeout`. `render.pdf()` and `download_pdf()` bound
+the whole download, so raise `timeout` if your PDFs take longer than that to
+download. `render.pdf_stream()` uses it as an idle timeout, the wait for the
+answer and each gap between two chunks, and is never cut off for its total
+length. Past the timeout the error is `DOWNLOAD_FAILED` with the message
+`Failed to download PDF: timeout` (was `Failed to download PDF: network error`).
+
+### `render.pdf_stream()` raises `DOWNLOAD_FAILED` from the iterator
+
+A download that fails while you iterate the chunks raises the
+`PoliPageError` (`DOWNLOAD_FAILED`) in your loop. It used to raise the httpx
+exception there, converted only when the `with` block exited.
+
+```python
+# 0.13.0
+with client.render.pdf_stream(input) as chunks:
+    try:
+        for chunk in chunks:
+            upload.write(chunk)
+    except PoliPageError:  # was httpx.HTTPError here
+        upload.abort()
+        raise
+```
+
 ## From 0.10.0 to 0.11.0
 
 The SDK now follows the retry policy and the error messages of the Poli Page

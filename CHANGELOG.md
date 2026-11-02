@@ -9,6 +9,67 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-02
+
+Conformance with the Poli Page API contract v0.13.0
+([poli-page/api-contract](https://github.com/poli-page/api-contract)). The SDK now shares its
+major.minor with the Poli Page API, so it moves from 0.11 to 0.13 (see
+[RELEASING.md](RELEASING.md#versions)). See [MIGRATION.md](MIGRATION.md#from-0110-to-0130).
+
+### Added
+
+- `invalid_response`: a 2xx answer whose body is not JSON, from a method that expects JSON
+  (the render call of `render.document`, `render.pdf` and `render.pdf_stream`,
+  `documents.get`, `documents.thumbnails`), raises `InvalidResponseError`, a new
+  `PoliPageError` subclass exported from `poli_page`: code `invalid_response`, message
+  `Invalid response: HTTP <status> body is not JSON`, the real 2xx as `status`, the answer's
+  `x-request-id` as `request_id`, and the `json.JSONDecodeError` as `__cause__`. It is never
+  retried, `is_retryable()` is `False`, and `on_error` fires with it. Such a body usually comes
+  from a proxy or a captive portal between the SDK and the API. Same in both clients.
+- `io_error`: `render_to_file()` and `async_render_to_file()` raise it when they cannot write
+  the file (creating a parent directory, creating the temporary file, writing it or renaming it
+  into place). No status, the message `Failed to write PDF: <reason>` with the `OSError`'s own
+  text, that `OSError` as `__cause__`, never retried.
+- `error_codes.INVALID_RESPONSE` and `error_codes.IO_ERROR`.
+- `to_payload()` answers `status` 502 for `invalid_response`. The error's own `status` keeps
+  the real 2xx. The payload has exactly the keys `code`, `message`, `status` and `requestId`, as
+  before.
+- `scripts/release.sh` and the Publish workflow check that the API contract pinned for the
+  tests has the release's major.minor.
+
+### Changed
+
+- **Breaking:** a 2xx whose body is not JSON raised a raw `json.JSONDecodeError`, outside
+  `PoliPageError`; it is now `InvalidResponseError` (above).
+- **Breaking:** `render_to_file()` and `async_render_to_file()` raised the `OSError` itself
+  when they could not write the file; they now raise `io_error` (above).
+- `render_to_file()` and `async_render_to_file()` write to a temporary file in the target's
+  directory and rename it over the target only once the PDF is complete. When anything fails
+  (the render, the download or the write), the target is left as it was: an existing file keeps
+  its content and a missing one is not created. The directory and the temporary file are
+  prepared before the render, so a path that cannot be written costs no render, and input
+  without a `project` is refused before anything is created on disk. A replaced file gets the
+  permissions of a newly created file.
+- The presigned-URL download is bounded by the client's `timeout`, or the render call's own
+  `timeout` for `render.pdf` and `render.pdf_stream`. Before, httpx's per-operation timeouts
+  applied (those of the `http_client` you passed, if any), so a download that kept receiving
+  bytes slowly never timed out. For `render.pdf` and `download_pdf()`, the timeout bounds the
+  whole download; the sync client runs that download on a short-lived worker thread so that it
+  can stop waiting on time. For `render.pdf_stream` (and the file helpers), it is an idle
+  timeout: the wait for the answer and each gap between two chunks, so a large PDF read at the
+  caller's pace is not cut off.
+- A download that outlasts its timeout raises `DOWNLOAD_FAILED` with the message
+  `Failed to download PDF: timeout` (was `Failed to download PDF: network error`). No status,
+  not retryable. A download whose connection closes before the announced `Content-Length` is
+  still `Failed to download PDF: network error`.
+- **Breaking:** `render.pdf_stream` raises `DOWNLOAD_FAILED` from the chunk iterator when the
+  download fails mid-stream. It used to raise the httpx exception inside the `with` block and
+  convert it only when the block exited, so an `except httpx.HTTPError` around the loop no
+  longer sees it, and an httpx error raised by your own code inside the block is no longer
+  turned into `DOWNLOAD_FAILED`.
+- A `timeout` of 0 or less still goes to httpx as it is, for API calls and downloads alike;
+  the SDK adds no deadline of its own for it.
+
 ## [0.11.0] - 2026-10-30
 
 Conformance with the Poli Page API contract v1.3.0
