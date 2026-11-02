@@ -6,7 +6,8 @@
 # optional augment; this script is what most releases run.
 #
 # What it does, in order:
-#   1. Pre-flight: on main, clean tree, tag doesn't already exist.
+#   1. Pre-flight: on main, clean tree, tag doesn't already exist, the API
+#      contract CI pins has the release's major.minor.
 #   2. Verify: ruff, pyright, unit tests and the API contract tests against the
 #      contract version CI pins (integration if POLI_PAGE_API_KEY set).
 #   3. Build: python -m build (wheel + sdist into dist/).
@@ -105,6 +106,11 @@ if git rev-parse "v$VERSION" >/dev/null 2>&1; then
 	fail "tag v$VERSION already exists. Bump the version in src/poli_page/_version.py first."
 fi
 ok "tag v$VERSION does not exist yet"
+
+# The SDK shares its major.minor with the Poli Page API: the pinned API
+# contract must carry a stable tag of the release's major.minor.
+contract_check="$(./scripts/check-contract-version.sh "$VERSION" 2>&1)" || fail "$contract_check"
+ok "$contract_check"
 
 # ─── 3. verify ──────────────────────────────────────────────────────────────
 step "Lint + format + typecheck + unit and contract tests"

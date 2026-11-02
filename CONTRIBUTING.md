@@ -90,6 +90,9 @@ organization's sandbox.
 
 ## Releasing
 
+Version numbers follow the Poli Page API's major.minor: see
+[RELEASING.md](RELEASING.md#versions).
+
 Releases are **manual**. There is no CI workflow that auto-publishes — by
 design. The only supported publishing path is `scripts/release.sh`.
 
@@ -103,7 +106,8 @@ design. The only supported publishing path is `scripts/release.sh`.
    ./scripts/release.sh --testpypi  # publish to TestPyPI instead
    ```
    The script runs pre-flight checks (clean tree, on main, tag doesn't
-   exist), lint / typecheck / unit tests, builds the wheel + sdist,
+   exist, the pinned API contract has the version's major.minor), lint /
+   typecheck / unit and contract tests, builds the wheel + sdist,
    inspects with `twine check`, prints contents + size, and asks you to
    confirm before publishing. On success, it creates a local `vX.Y.Z` tag.
 5. Push the tag manually when you're ready: `git push origin vX.Y.Z`.
