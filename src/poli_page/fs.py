@@ -9,6 +9,11 @@ target is left as it was: an existing file keeps its content and a missing one
 is not created. The directory and the temporary file are prepared before the
 render, so a path that cannot be written costs no render.
 
+An existing target that is not a regular file (a directory, a FIFO, a device, a
+socket) raises `io_error` with `Failed to write PDF: <target>: not a regular
+file`, and one that is not writable raises `io_error` with the `PermissionError`,
+both before any render.
+
 A symlinked target is resolved first: the temporary file goes next to the file
 the link points to and is renamed onto it, so the link stays a link. A replaced
 file keeps its permission mode. Its owner and its hard links are not kept: the
@@ -27,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import os
 import secrets
 import stat
@@ -108,10 +114,7 @@ def _open_part(path: str | os.PathLike[str]) -> tuple[Path, Path, BinaryIO]:
     """
     try:
         target = Path(os.path.realpath(path))
-        # An existing target that cannot be opened for writing (read-only, a directory) fails
-        # now, before any render, rather than being replaced by the rename.
-        with contextlib.suppress(FileNotFoundError):
-            target.open("r+b").close()
+        _check_existing(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         # A new name each time ("x": never an existing file), hidden, in the target's
         # directory so the final rename stays on one filesystem.
@@ -119,6 +122,25 @@ def _open_part(path: str | os.PathLike[str]) -> tuple[Path, Path, BinaryIO]:
         return target, part, part.open("xb")
     except OSError as exc:
         raise _io_error(exc) from exc
+
+
+def _check_existing(target: Path) -> None:
+    """Refuse, before any render, an existing target the rename must not replace.
+
+    A target that is not a regular file (a directory, a FIFO, a device, a socket), or one the
+    user cannot write, fails now rather than being replaced. `os.stat` and `os.access` only:
+    opening the target would block on a FIFO.
+    """
+    try:
+        existing = os.stat(target)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(existing.st_mode):
+        raise PoliPageError(
+            MESSAGE_IO_ERROR.format(reason=f"{target}: not a regular file"), code="io_error"
+        )
+    if not os.access(target, os.W_OK):
+        raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), str(target))
 
 
 def _write_chunk(file: BinaryIO, chunk: bytes) -> None:

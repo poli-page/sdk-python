@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import stat
 import sys
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import BinaryIO, cast
@@ -213,6 +214,13 @@ def _fail_writes(monkeypatch: pytest.MonkeyPatch, error: OSError) -> None:
     monkeypatch.setattr("poli_page.fs._open_part", open_part)
 
 
+def _assert_not_a_regular_file(err: PoliPageError, target: Path) -> None:
+    assert err.code == "io_error"
+    assert err.status is None
+    assert err.message == f"Failed to write PDF: {os.path.realpath(target)}: not a regular file"
+    assert err.is_retryable() is False
+
+
 def _leftovers(directory: Path) -> list[str]:
     return sorted(p.name for p in directory.iterdir() if p.name.endswith(".part"))
 
@@ -231,16 +239,16 @@ class TestRenderToFileFailures:
         assert render.call_count == 0
 
     @respx.mock
-    def test_target_that_is_a_directory_is_io_error_and_kept(self, tmp_path: Path) -> None:
-        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
-        respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+    def test_target_that_is_a_directory_is_io_error_before_any_render(self, tmp_path: Path) -> None:
+        render = respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
         target = tmp_path / "out.pdf"
         target.mkdir()
         (target / "keep").write_bytes(b"x")
         client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         with pytest.raises(PoliPageError) as excinfo:
             render_to_file(client, PROJECT_MODE_INPUT, target)  # type: ignore[arg-type]
-        _assert_io_error(excinfo.value)
+        _assert_not_a_regular_file(excinfo.value, target)
+        assert render.call_count == 0
         assert (target / "keep").read_bytes() == b"x"
         assert _leftovers(tmp_path) == []
 
@@ -260,6 +268,28 @@ class TestRenderToFileFailures:
         _assert_io_error(excinfo.value)
         assert excinfo.value.__cause__ is disk_full
         assert excinfo.value.message == "Failed to write PDF: [Errno 28] No space left on device"
+        assert target.read_bytes() == b"previous PDF"
+        assert _leftovers(tmp_path) == []
+
+    @respx.mock
+    def test_a_failed_rename_is_io_error_and_keeps_the_target(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        target = tmp_path / "c.pdf"
+        target.write_bytes(b"previous PDF")
+        busy = PermissionError(13, "Permission denied")
+
+        def replace(_src: object, _dst: object) -> None:
+            raise busy
+
+        monkeypatch.setattr(os, "replace", replace)
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
+        with pytest.raises(PoliPageError) as excinfo:
+            render_to_file(client, PROJECT_MODE_INPUT, target)  # type: ignore[arg-type]
+        _assert_io_error(excinfo.value)
+        assert excinfo.value.__cause__ is busy
         assert target.read_bytes() == b"previous PDF"
         assert _leftovers(tmp_path) == []
 
@@ -446,6 +476,40 @@ class TestRenderToFileTarget:
             assert _leftovers(tmp_path) == []
         finally:
             target.chmod(0o644)
+
+    @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs os.mkfifo (POSIX)")
+    @respx.mock
+    def test_a_fifo_target_is_io_error_before_any_render(self, tmp_path: Path) -> None:
+        # Checked with os.stat: opening a FIFO would block until a reader comes. The call runs
+        # on a thread so that a regression fails the test instead of hanging the suite.
+        render = _mock_render()
+        target = tmp_path / "out.pdf"
+        os.mkfifo(target)
+        raised: list[BaseException] = []
+
+        def call() -> None:
+            try:
+                render_to_file(
+                    PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL),
+                    _RENDER_INPUT,
+                    target,
+                )
+            except BaseException as exc:
+                raised.append(exc)
+
+        worker = threading.Thread(target=call, daemon=True)
+        worker.start()
+        worker.join(5)
+        if worker.is_alive():
+            with open(target, "rb"):  # a reader unblocks the writer before the test fails
+                pass
+            pytest.fail("render_to_file blocked on the FIFO")
+        assert len(raised) == 1
+        assert isinstance(raised[0], PoliPageError)
+        _assert_not_a_regular_file(raised[0], target)
+        assert render.call_count == 0
+        assert stat.S_ISFIFO(target.stat().st_mode)
+        assert _leftovers(tmp_path) == []
 
     @posix_only
     @respx.mock

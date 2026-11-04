@@ -49,8 +49,9 @@ major.minor with the Poli Page API, so it moves from 0.11 to 0.13 (see
   its content and a missing one is not created. The directory and the temporary file are
   prepared before the render, so a path that cannot be written costs no render, and input
   without a `project` is refused before anything is created on disk. An existing target that
-  cannot be opened for writing (read-only, a directory) is refused with `io_error` before the
-  render, as before, rather than replaced.
+  is not a regular file (a directory, a FIFO, a device, a socket) raises `io_error` with
+  `Failed to write PDF: <target>: not a regular file`, and one you cannot write raises
+  `io_error` with the `PermissionError`, both before the render and without replacing it.
 - A symlinked target is resolved first, each link relative to its own real directory: the PDF
   replaces the file the link points to (created if missing) and the link stays a link. A
   replaced file keeps its permission mode. It does not keep its owner or its hard links: the

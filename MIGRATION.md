@@ -53,7 +53,8 @@ resolved first, so the PDF replaces the file the link points to and the link
 stays a link. A replaced file keeps its permission mode, but it is a new file:
 it is owned by the user running the SDK, and other hard links to the old file
 keep the old content. A read-only target is still refused with `io_error`,
-before any render.
+before any render, and so is one that is not a regular file (a directory, a
+FIFO, a device): `Failed to write PDF: <target>: not a regular file`.
 
 ### The PDF download is bounded by `timeout`
 
