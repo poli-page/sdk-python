@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+import httpx
 import pytest
 
 from poli_page import AsyncPoliPage, PoliPage, PoliPageError
@@ -319,3 +320,31 @@ def test_a_first_byte_within_the_timeout_streams(server: PdfServer, flavor: str)
     server.mode = "first-byte-late"
     server.header_delay = 0.3
     assert _call(flavor, server, "render.pdf_stream", timeout=1.0) == PDF
+
+
+def test_a_stream_answer_after_the_deadline_is_closed(server: PdfServer) -> None:
+    # Headers at 350 ms and the first chunk 350 ms later: each wait is under httpx's 500 ms,
+    # so the worker gets its answer, but after the 500 ms budget. The call has already failed;
+    # the late answer is closed, not leaked.
+    server.mode = "first-byte-late"
+    server.header_delay = 0.35
+    closed: list[httpx.Response] = []
+    real_close = httpx.Response.close
+
+    def close(response: httpx.Response) -> None:
+        closed.append(response)
+        real_close(response)
+
+    # The client stays open until the worker is done, so its late answer reaches it.
+    with PoliPage(api_key="pp_sandbox_x", base_url=server.origin, timeout=0.5) as client:
+        with pytest.raises(PoliPageError) as excinfo:
+            client.render.pdf_stream(INPUT).__enter__()  # type: ignore[arg-type]
+        _assert_timeout(excinfo.value)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(httpx.Response, "close", close)
+            workers = [t for t in threading.enumerate() if t.name == "poli-page-download"]
+            for worker in workers:
+                worker.join(5)
+        assert not any(worker.is_alive() for worker in workers)
+    assert len(closed) == 1
+    assert closed[0].is_closed

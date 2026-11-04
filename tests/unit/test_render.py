@@ -521,3 +521,60 @@ class TestDownloadTimeoutValue:
         )
         client.render.document(PROJECT_MODE_INPUT).download_pdf()  # type: ignore[arg-type]
         assert self._download_timeout(pdf) == {"connect": 3, "read": 3, "write": 3, "pool": 3}
+
+
+class TestStreamEdges:
+    """An empty body, a failure before any byte, and a TimeoutError the deadline did not raise."""
+
+    @respx.mock
+    def test_sync_empty_body_streams_nothing(self, client: PoliPage) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, content=b""))
+        with client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks:  # type: ignore[arg-type]
+            assert list(chunks) == []
+
+    @respx.mock
+    async def test_async_empty_body_streams_nothing(self) -> None:
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, content=b""))
+        async with (
+            AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client,
+            client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks,  # type: ignore[arg-type]
+        ):
+            received = [chunk async for chunk in chunks]
+        assert received == []
+
+    @respx.mock
+    async def test_async_stream_network_error_before_any_byte(self) -> None:
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(side_effect=httpx.ConnectError("refused"))
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
+            with pytest.raises(PoliPageError) as excinfo:
+                async with client.render.pdf_stream(PROJECT_MODE_INPUT):  # type: ignore[arg-type]
+                    pass
+        assert excinfo.value.code == "DOWNLOAD_FAILED"
+        assert excinfo.value.message == "Failed to download PDF: network error"
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
+
+    @pytest.mark.parametrize("method", ["render.pdf", "render.pdf_stream"])
+    @respx.mock
+    async def test_async_timeout_error_not_from_the_deadline_is_not_labelled_timeout(
+        self, method: str
+    ) -> None:
+        # Only the SDK's own deadline (or an httpx timeout) is `Failed to download PDF: timeout`:
+        # a TimeoutError raised by the transport itself passes through unchanged.
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(side_effect=TimeoutError("from the transport"))
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
+            with pytest.raises(TimeoutError, match="from the transport"):
+                if method == "render.pdf":
+                    await client.render.pdf(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+                else:
+                    async with client.render.pdf_stream(PROJECT_MODE_INPUT):  # type: ignore[arg-type]
+                        pass
