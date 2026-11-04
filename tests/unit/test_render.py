@@ -9,6 +9,7 @@ Mocked via respx; lives in tests/unit/.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from typing import assert_type
 
@@ -465,3 +466,209 @@ class TestDownloadDroppedMidBody:
                 chunks.append(chunk)
         assert chunks == [b"%PDF-1.4 partial"]
         self._assert_network_download_failed(excinfo.value)
+
+
+class TestDownloadTimeoutValue:
+    """The download gets the API attempt's timeout value, handed to httpx as it is.
+
+    A value of 0 or less adds no deadline of the SDK's own: httpx decides what it means, as
+    for an API attempt (the mocked transport here applies none, so the download succeeds).
+    """
+
+    @staticmethod
+    def _download_timeout(route: respx.Route) -> object:
+        return route.calls[-1].request.extensions["timeout"]
+
+    @pytest.mark.parametrize("timeout", [0, -1, 7])
+    @respx.mock
+    def test_sync(self, timeout: float) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        pdf = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        client = PoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, timeout=timeout)
+        expected = {"connect": timeout, "read": timeout, "write": timeout, "pool": timeout}
+
+        assert client.render.pdf(PROJECT_MODE_INPUT).startswith(b"%PDF")  # type: ignore[arg-type]
+        assert self._download_timeout(pdf) == expected
+        with client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks:  # type: ignore[arg-type]
+            assert b"".join(chunks).startswith(b"%PDF")
+        assert self._download_timeout(pdf) == expected
+
+    @pytest.mark.parametrize("timeout", [0, -1, 7])
+    @respx.mock
+    async def test_async(self, timeout: float) -> None:
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        pdf = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        expected = {"connect": timeout, "read": timeout, "write": timeout, "pool": timeout}
+        async with AsyncPoliPage(
+            api_key="pp_sandbox_abc", base_url=TEST_BASE_URL, timeout=timeout
+        ) as client:
+            assert (await client.render.pdf(PROJECT_MODE_INPUT)).startswith(b"%PDF")  # type: ignore[arg-type]
+            assert self._download_timeout(pdf) == expected
+            async with client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks:  # type: ignore[arg-type]
+                assert b"".join([c async for c in chunks]).startswith(b"%PDF")
+            assert self._download_timeout(pdf) == expected
+
+    @respx.mock
+    def test_an_injected_http_client_gets_the_client_timeout(self) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        pdf = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        client = PoliPage(
+            api_key="pp_sandbox_abc",
+            base_url=TEST_BASE_URL,
+            timeout=3,
+            http_client=httpx.Client(timeout=None),
+        )
+        client.render.document(PROJECT_MODE_INPUT).download_pdf()  # type: ignore[arg-type]
+        assert self._download_timeout(pdf) == {"connect": 3, "read": 3, "write": 3, "pool": 3}
+
+
+class TestStreamEdges:
+    """An empty body, a failure before any byte, and a TimeoutError the deadline did not raise."""
+
+    @respx.mock
+    def test_sync_empty_body_streams_nothing(self, client: PoliPage) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, content=b""))
+        with client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks:  # type: ignore[arg-type]
+            assert list(chunks) == []
+
+    @respx.mock
+    async def test_async_empty_body_streams_nothing(self) -> None:
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, content=b""))
+        async with (
+            AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client,
+            client.render.pdf_stream(PROJECT_MODE_INPUT) as chunks,  # type: ignore[arg-type]
+        ):
+            received = [chunk async for chunk in chunks]
+        assert received == []
+
+    @respx.mock
+    async def test_async_stream_network_error_before_any_byte(self) -> None:
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(side_effect=httpx.ConnectError("refused"))
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
+            with pytest.raises(PoliPageError) as excinfo:
+                async with client.render.pdf_stream(PROJECT_MODE_INPUT):  # type: ignore[arg-type]
+                    pass
+        assert excinfo.value.code == "DOWNLOAD_FAILED"
+        assert excinfo.value.message == "Failed to download PDF: network error"
+        assert isinstance(excinfo.value.__cause__, httpx.ConnectError)
+
+    @pytest.mark.parametrize("method", ["render.pdf", "render.pdf_stream"])
+    @respx.mock
+    async def test_async_timeout_error_not_from_the_deadline_is_not_labelled_timeout(
+        self, method: str
+    ) -> None:
+        # Only the SDK's own deadline (or an httpx timeout) is `Failed to download PDF: timeout`:
+        # a TimeoutError raised by the transport itself passes through unchanged.
+        from poli_page import AsyncPoliPage
+
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(side_effect=TimeoutError("from the transport"))
+        async with AsyncPoliPage(api_key="pp_sandbox_abc", base_url=TEST_BASE_URL) as client:
+            with pytest.raises(TimeoutError, match="from the transport"):
+                if method == "render.pdf":
+                    await client.render.pdf(PROJECT_MODE_INPUT)  # type: ignore[arg-type]
+                else:
+                    async with client.render.pdf_stream(PROJECT_MODE_INPUT):  # type: ignore[arg-type]
+                        pass
+
+
+class TestAbandonedSyncWorker:
+    """A sync download whose caller gave up stops at its next step: before the request, after
+    the headers, or after a chunk, so it releases its connection as early as httpx allows."""
+
+    @staticmethod
+    def _client(abandoned: threading.Event | None = None) -> httpx.Client:
+        # The response hook runs once the headers are in, before any body read.
+        hooks = {"response": [lambda _response: abandoned.set()]} if abandoned else {}
+        return httpx.Client(event_hooks=hooks)
+
+    @respx.mock
+    def test_read_all_sends_nothing_once_abandoned(self) -> None:
+        from poli_page._download import _read_all
+
+        route = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        abandoned = threading.Event()
+        abandoned.set()
+        assert _read_all(self._client(), PRESIGNED_URL, 5, abandoned) == b""
+        assert route.call_count == 0
+
+    @respx.mock
+    def test_read_all_reads_no_body_when_abandoned_during_the_headers(self) -> None:
+        from poli_page._download import _read_all
+
+        body = _CountingBody()
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, stream=body))
+        abandoned = threading.Event()
+        assert _read_all(self._client(abandoned), PRESIGNED_URL, 5, abandoned) == b""
+        assert body.reads == 0
+        assert body.closed
+
+    @respx.mock
+    def test_read_all_stops_after_the_chunk_during_which_it_was_abandoned(self) -> None:
+        from poli_page._download import _read_all
+
+        abandoned = threading.Event()
+
+        class _AbandonedMidBody(httpx.SyncByteStream):
+            def __init__(self) -> None:
+                self.reads = 0
+
+            def __iter__(self) -> Iterator[bytes]:
+                for chunk in (b"first", b"second", b"third"):
+                    self.reads += 1
+                    yield chunk
+                    abandoned.set()  # the caller gives up while this chunk is read
+
+        body = _AbandonedMidBody()
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, stream=body))
+        assert _read_all(self._client(), PRESIGNED_URL, 5, abandoned) == b"first"
+        assert body.reads == 2  # the next chunk arrived, then the read stopped
+
+    @respx.mock
+    def test_start_stream_sends_nothing_once_abandoned(self) -> None:
+        from poli_page._download import _DeadlineExpired, _start_stream
+
+        route = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        abandoned = threading.Event()
+        abandoned.set()
+        client = self._client()
+        with pytest.raises(_DeadlineExpired):
+            _start_stream(client, client.build_request("GET", PRESIGNED_URL), abandoned)
+        assert route.call_count == 0
+
+    @respx.mock
+    def test_start_stream_closes_the_response_when_abandoned_during_the_headers(self) -> None:
+        from poli_page._download import _DeadlineExpired, _start_stream
+
+        body = _CountingBody()
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, stream=body))
+        abandoned = threading.Event()
+        client = self._client(abandoned)
+        with pytest.raises(_DeadlineExpired):
+            _start_stream(client, client.build_request("GET", PRESIGNED_URL), abandoned)
+        assert body.reads == 0
+        assert body.closed
+
+
+class _CountingBody(httpx.SyncByteStream):
+    """A PDF body that counts how many chunks were read and whether it was closed."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+        self.closed = False
+
+    def __iter__(self) -> Iterator[bytes]:
+        self.reads += 1
+        yield b"%PDF-1.4 body"
+
+    def close(self) -> None:
+        self.closed = True

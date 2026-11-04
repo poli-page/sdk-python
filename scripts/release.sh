@@ -6,7 +6,8 @@
 # optional augment; this script is what most releases run.
 #
 # What it does, in order:
-#   1. Pre-flight: on main, clean tree, tag doesn't already exist.
+#   1. Pre-flight: on main, clean tree, tag doesn't already exist, the API
+#      contract CI pins has the release's major.minor.
 #   2. Verify: ruff, pyright, unit tests and the API contract tests against the
 #      contract version CI pins (integration if POLI_PAGE_API_KEY set).
 #   3. Build: python -m build (wheel + sdist into dist/).
@@ -106,12 +107,17 @@ if git rev-parse "v$VERSION" >/dev/null 2>&1; then
 fi
 ok "tag v$VERSION does not exist yet"
 
+# The SDK shares its major.minor with the Poli Page API: the pinned API
+# contract must carry a stable tag of the release's major.minor.
+contract_check="$(./scripts/check-contract-version.sh "$VERSION" 2>&1)" || fail "$contract_check"
+ok "$contract_check"
+
 # ─── 3. verify ──────────────────────────────────────────────────────────────
 step "Lint + format + typecheck + unit and contract tests"
 # tests/test_contract.py runs the API contract cases. Use the contract version
 # CI pins, unless POLI_CONTRACT already names a contract.json.
 if [[ -z "${POLI_CONTRACT:-}" ]]; then
-	contract_sha=$(sed -n 's|.*uses: poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' .github/workflows/ci.yml | head -n 1)
+	contract_sha=$(sed -n 's|^[[:space:]]*-\{0,1\}[[:space:]]*uses:[[:space:]]*poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' .github/workflows/ci.yml | head -n 1)
 	[[ -n "$contract_sha" ]] || fail "no poli-page/api-contract pin found in .github/workflows/ci.yml"
 	POLI_CONTRACT="$(mktemp -d)/contract.json"
 	curl -fsSL "https://raw.githubusercontent.com/poli-page/api-contract/$contract_sha/contract.json" -o "$POLI_CONTRACT" \

@@ -12,8 +12,8 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import Generator, Iterator
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, cast
 
@@ -34,19 +34,20 @@ from poli_page._constants import (
     MESSAGE_NETWORK_ERROR,
     USER_AGENT_PREFIX,
 )
+from poli_page._download import fetch_bytes, stream_bytes
 from poli_page._errors import (
     APIConnectionError,
     APIStatusError,
     APITimeoutError,
     PoliPageError,
     classify,
+    invalid_response_error,
 )
 from poli_page._transport import (
     HttpMethod,
     build_headers,
     build_url,
     compute_backoff,
-    download_failed_message,
     mask_api_key,
     parse_error_body,
     parse_retry_after,
@@ -221,7 +222,14 @@ class PoliPage:
         response = self._request(
             method, path, body=body, idempotency_key=idempotency_key, timeout=timeout
         )
-        return cast(dict[str, Any], response.json())
+        try:
+            parsed = response.json()
+        except ValueError as exc:
+            # A 2xx that is not JSON (a proxy, a captive portal): raised as is, never retried.
+            err = invalid_response_error(response)
+            self._fire_error(err)
+            raise err from exc
+        return cast(dict[str, Any], parsed)
 
     def _request(
         self,
@@ -326,37 +334,19 @@ class PoliPage:
         )
 
     # ------------------------------------------------------------------
-    # Presigned-URL transport (S3 second-hop) — no auth, no SDK retries.
-    # Failures surface as `PoliPageError(code='DOWNLOAD_FAILED')` per plan §5.5.
+    # Presigned-URL download (object storage) — no auth, no SDK retries.
+    # Failures surface as `PoliPageError(code='DOWNLOAD_FAILED')`.
     # ------------------------------------------------------------------
 
-    def _fetch_bytes(self, url: str) -> bytes:
-        try:
-            response = self._http_client.get(url)
-        except httpx.HTTPError as exc:
-            raise PoliPageError(download_failed_message(None), code="DOWNLOAD_FAILED") from exc
-        if not response.is_success:
-            raise PoliPageError(
-                download_failed_message(response.status_code),
-                code="DOWNLOAD_FAILED",
-                status=response.status_code,
-            )
-        return response.content
+    def _fetch_bytes(self, url: str, timeout: float | None = None) -> bytes:
+        """Download `url` whole, within `timeout` (the client's when `None`)."""
+        return fetch_bytes(self._http_client, url, self.timeout if timeout is None else timeout)
 
-    @contextmanager
-    def _stream_bytes(self, url: str) -> Generator[Iterator[bytes], None, None]:
-        """Yield a chunk iterator over `url`. Network or non-2xx → DOWNLOAD_FAILED."""
-        try:
-            with self._http_client.stream("GET", url) as response:
-                if not response.is_success:
-                    raise PoliPageError(
-                        download_failed_message(response.status_code),
-                        code="DOWNLOAD_FAILED",
-                        status=response.status_code,
-                    )
-                yield response.iter_bytes()
-        except httpx.HTTPError as exc:
-            raise PoliPageError(download_failed_message(None), code="DOWNLOAD_FAILED") from exc
+    def _stream_bytes(
+        self, url: str, timeout: float | None = None
+    ) -> AbstractContextManager[Iterator[bytes]]:
+        """Stream `url`, with `timeout` (the client's when `None`) as an idle timeout."""
+        return stream_bytes(self._http_client, url, self.timeout if timeout is None else timeout)
 
     # ------------------------------------------------------------------
     # Hooks — fire-and-forget; never break the request (plan §10.3)

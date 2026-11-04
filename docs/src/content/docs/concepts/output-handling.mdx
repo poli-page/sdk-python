@@ -51,6 +51,8 @@ render_to_file(
 
 Async variant: `async_render_to_file(client, input, path)` — same shape, awaits internally.
 
+The PDF goes to a temporary file in the target's directory, renamed over the target once complete. When the render, the download or the write fails, the target is left as it was: an existing file keeps its content and a missing one is not created. A symlinked target stays a link: the file it points to is replaced, keeping its permission mode (not its owner or hard links). A file that cannot be written raises `PoliPageError` with the code `io_error` (`Failed to write PDF: <target>: <reason>`), never retried.
+
 ## Server-side storage (`render.document`)
 
 When you want the PDF to live on Poli Page's servers (for later download, preview, or thumbnails), use `render.document`. It returns a `DocumentDescriptor` with `document_id`, `presigned_pdf_url`, and a `download_pdf()` method.

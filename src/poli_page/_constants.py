@@ -26,13 +26,17 @@ NON_RETRYABLE_CODES: frozenset[str] = frozenset(
 
 # SDK-side error messages (SDK spec §8.3) -----------------------------------
 # Exact texts, the same in every Poli Page SDK. `{timeoutMs}` is the attempt's
-# timeout in milliseconds, `{status}` the storage status of a failed download.
+# timeout in milliseconds, `{status}` the storage status of a failed download or
+# the 2xx status of an answer that is not JSON, `{reason}` the OS error's own text.
 
 MESSAGE_INVALID_OPTIONS = "apiKey is required"
 MESSAGE_NETWORK_ERROR = "Network request failed"
 MESSAGE_TIMEOUT = "Request timed out after {timeoutMs}ms"
 MESSAGE_DOWNLOAD_FAILED = "Failed to download PDF: HTTP {status}"
 MESSAGE_DOWNLOAD_FAILED_NETWORK = "Failed to download PDF: network error"
+MESSAGE_DOWNLOAD_FAILED_TIMEOUT = "Failed to download PDF: timeout"
+MESSAGE_INVALID_RESPONSE = "Invalid response: HTTP {status} body is not JSON"
+MESSAGE_IO_ERROR = "Failed to write PDF: {reason}"
 MESSAGE_PROJECT_REQUIRED = "project is required"
 
 # Headers ---------------------------------------------------------------

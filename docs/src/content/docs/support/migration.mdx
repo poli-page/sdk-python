@@ -5,6 +5,15 @@ description: Upgrade guides for moving between breaking versions of the Python S
 
 This page tracks breaking changes between versions of `poli-page`. For the full per-release diff, see the [changelog](../changelog/).
 
+## From 0.11.0 to 0.13.0
+
+The SDK now shares its major.minor with the Poli Page API, so there is no 0.12. This release follows the [Poli Page API contract](https://github.com/poli-page/api-contract) v0.13.0. The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).
+
+- A 2xx answer whose body is not JSON raises `InvalidResponseError` (code `invalid_response`, the real 2xx as `status`, not retried) instead of a raw `json.JSONDecodeError`. See [Errors](../../production/errors/).
+- `render_to_file` and `async_render_to_file` raise `io_error` (`Failed to write PDF: <target>: <reason>`, the `OSError` as `__cause__`) instead of the `OSError` itself, and leave the target as it was when anything fails.
+- The PDF download is bounded by `timeout`: the whole download for `render.pdf` and `download_pdf()`, an idle timeout for `render.pdf_stream`. Past it, `DOWNLOAD_FAILED` with `Failed to download PDF: timeout`.
+- `render.pdf_stream` raises `DOWNLOAD_FAILED` from the chunk iterator, not an httpx exception.
+
 ## From 0.10.0 to 0.11.0
 
 The SDK now follows the retry policy and the error messages of the [Poli Page API contract](https://github.com/poli-page/api-contract). The full guide is in [`MIGRATION.md` in the repo](https://github.com/poli-page/sdk-python/blob/main/MIGRATION.md).

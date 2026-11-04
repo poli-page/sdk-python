@@ -43,7 +43,7 @@ jobs:
 
       - name: API contract
         id: contract
-        uses: poli-page/api-contract@0eba96c1ecf9a28b7e259f444f3ca5b7c059d5fd # v1.3.0
+        uses: poli-page/api-contract@1f705b3ce3e15ff56e2f7b8249c1a2983af2312c # v0.13.0
 
       - name: Test
         # tests/test_contract.py runs the contract's SDK cases. With CI set it fails, never

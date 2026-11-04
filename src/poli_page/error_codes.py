@@ -15,6 +15,8 @@ TIMEOUT = "timeout"
 ABORTED = "aborted"
 UNKNOWN_ERROR = "unknown_error"
 DOWNLOAD_FAILED = "DOWNLOAD_FAILED"
+INVALID_RESPONSE = "invalid_response"
+IO_ERROR = "io_error"
 
 # Auth.
 MISSING_API_KEY = "MISSING_API_KEY"
