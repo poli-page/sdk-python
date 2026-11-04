@@ -184,11 +184,13 @@ class TestAsyncRenderToFile:
         assert out.read_bytes().startswith(b"%PDF")
 
 
-def _assert_io_error(err: PoliPageError) -> None:
+def _assert_io_error(err: PoliPageError, target: Path) -> None:
+    """`io_error` naming the target as given and the OS text, never the temporary file."""
     assert err.code == "io_error"
     assert err.status is None
     assert isinstance(err.__cause__, OSError)
-    assert err.message == f"Failed to write PDF: {err.__cause__}"
+    assert err.message == f"Failed to write PDF: {target}: {err.__cause__.strerror}"
+    assert ".part" not in err.message
     assert err.is_retryable() is False
 
 
@@ -207,9 +209,10 @@ class _FullDisk:
 
 
 def _fail_writes(monkeypatch: pytest.MonkeyPatch, error: OSError) -> None:
-    def open_part(path: Path) -> tuple[Path, Path, object]:
-        target, part, file = _open_part(path)
-        return target, part, _FullDisk(file, error)
+    def open_part(path: Path) -> object:
+        part = _open_part(path)
+        part.file = cast(BinaryIO, _FullDisk(part.file, error))
+        return part
 
     monkeypatch.setattr("poli_page.fs._open_part", open_part)
 
@@ -217,7 +220,7 @@ def _fail_writes(monkeypatch: pytest.MonkeyPatch, error: OSError) -> None:
 def _assert_not_a_regular_file(err: PoliPageError, target: Path) -> None:
     assert err.code == "io_error"
     assert err.status is None
-    assert err.message == f"Failed to write PDF: {os.path.realpath(target)}: not a regular file"
+    assert err.message == f"Failed to write PDF: {target}: not a regular file"
     assert err.is_retryable() is False
 
 
@@ -235,7 +238,7 @@ class TestRenderToFileFailures:
         client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         with pytest.raises(PoliPageError) as excinfo:
             render_to_file(client, PROJECT_MODE_INPUT, tmp_path / "blocker" / "a.pdf")  # type: ignore[arg-type]
-        _assert_io_error(excinfo.value)
+        _assert_io_error(excinfo.value, tmp_path / "blocker" / "a.pdf")
         assert render.call_count == 0
 
     @respx.mock
@@ -265,9 +268,9 @@ class TestRenderToFileFailures:
         client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         with pytest.raises(PoliPageError) as excinfo:
             render_to_file(client, PROJECT_MODE_INPUT, target)  # type: ignore[arg-type]
-        _assert_io_error(excinfo.value)
+        _assert_io_error(excinfo.value, target)
         assert excinfo.value.__cause__ is disk_full
-        assert excinfo.value.message == "Failed to write PDF: [Errno 28] No space left on device"
+        assert excinfo.value.message == f"Failed to write PDF: {target}: No space left on device"
         assert target.read_bytes() == b"previous PDF"
         assert _leftovers(tmp_path) == []
 
@@ -279,19 +282,82 @@ class TestRenderToFileFailures:
         respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
         target = tmp_path / "c.pdf"
         target.write_bytes(b"previous PDF")
-        busy = PermissionError(13, "Permission denied")
+        failures: list[OSError] = []
 
-        def replace(_src: object, _dst: object) -> None:
-            raise busy
+        def replace(src: object, dst: object) -> None:
+            # As the OS reports it: both paths, the temporary file's first.
+            failures.append(PermissionError(13, "Permission denied", str(src), None, str(dst)))
+            raise failures[-1]
 
         monkeypatch.setattr(os, "replace", replace)
         client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
         with pytest.raises(PoliPageError) as excinfo:
             render_to_file(client, PROJECT_MODE_INPUT, target)  # type: ignore[arg-type]
-        _assert_io_error(excinfo.value)
-        assert excinfo.value.__cause__ is busy
+        _assert_io_error(excinfo.value, target)
+        assert excinfo.value.__cause__ is failures[0]
+        assert ".part" in str(failures[0])  # the cause keeps the OS's full text
         assert target.read_bytes() == b"previous PDF"
         assert _leftovers(tmp_path) == []
+
+    @pytest.mark.skipif(
+        sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+        reason="needs POSIX directory permissions, as a user other than root",
+    )
+    @respx.mock
+    def test_an_unwritable_directory_names_the_target_not_the_temp_file(
+        self, tmp_path: Path
+    ) -> None:
+        # Creating the temporary file is the step that fails: the OS error names it.
+        render = respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        directory = tmp_path / "ro"
+        directory.mkdir()
+        directory.chmod(0o555)
+        target = directory / "a.pdf"
+        try:
+            client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
+            with pytest.raises(PoliPageError) as excinfo:
+                render_to_file(client, PROJECT_MODE_INPUT, target)  # type: ignore[arg-type]
+        finally:
+            directory.chmod(0o755)
+        _assert_io_error(excinfo.value, target)
+        assert isinstance(excinfo.value.__cause__, PermissionError)
+        assert ".part" in str(excinfo.value.__cause__)
+        assert render.call_count == 0
+        assert not target.exists()
+
+    @respx.mock
+    def test_a_failed_mode_copy_names_the_target_not_the_temp_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        target = tmp_path / "c.pdf"
+        target.write_bytes(b"previous PDF")
+
+        def chmod(path: object, _mode: int) -> None:
+            raise PermissionError(1, "Operation not permitted", str(path))
+
+        monkeypatch.setattr(os, "chmod", chmod)
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
+        with pytest.raises(PoliPageError) as excinfo:
+            render_to_file(client, PROJECT_MODE_INPUT, target)  # type: ignore[arg-type]
+        _assert_io_error(excinfo.value, target)
+        assert excinfo.value.message == f"Failed to write PDF: {target}: Operation not permitted"
+        assert target.read_bytes() == b"previous PDF"
+        assert _leftovers(tmp_path) == []
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="symlinks need POSIX semantics")
+    @respx.mock
+    def test_a_message_names_the_path_as_given_not_its_resolved_form(self, tmp_path: Path) -> None:
+        # The link is the caller's name for the target; the real path stays in the cause.
+        respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+        (tmp_path / "real").mkdir()
+        link = tmp_path / "link.pdf"
+        link.symlink_to("real")
+        client = PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL)
+        with pytest.raises(PoliPageError) as excinfo:
+            render_to_file(client, PROJECT_MODE_INPUT, link)  # type: ignore[arg-type]
+        _assert_not_a_regular_file(excinfo.value, link)
 
     @respx.mock
     def test_failed_download_keeps_an_existing_target(self, tmp_path: Path) -> None:
@@ -340,7 +406,7 @@ class TestAsyncRenderToFileFailures:
                     PROJECT_MODE_INPUT,  # type: ignore[arg-type]
                     tmp_path / "blocker" / "a.pdf",
                 )
-        _assert_io_error(excinfo.value)
+        _assert_io_error(excinfo.value, tmp_path / "blocker" / "a.pdf")
         assert render.call_count == 0
 
     @respx.mock
@@ -355,7 +421,7 @@ class TestAsyncRenderToFileFailures:
         async with AsyncPoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL) as client:
             with pytest.raises(PoliPageError) as excinfo:
                 await async_render_to_file(client, PROJECT_MODE_INPUT, target)  # type: ignore[arg-type]
-        _assert_io_error(excinfo.value)
+        _assert_io_error(excinfo.value, target)
         assert target.read_bytes() == b"previous PDF"
         assert _leftovers(tmp_path) == []
 
@@ -469,7 +535,7 @@ class TestRenderToFileTarget:
                     _RENDER_INPUT,
                     target,
                 )
-            _assert_io_error(excinfo.value)
+            _assert_io_error(excinfo.value, target)
             assert isinstance(excinfo.value.__cause__, PermissionError)
             assert render.call_count == 0
             assert target.read_bytes() == b"previous PDF"

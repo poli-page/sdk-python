@@ -33,7 +33,7 @@ except InvalidResponseError as err:  # from poli_page import InvalidResponseErro
 
 A file that cannot be written raised the `OSError` itself; it is now a
 `PoliPageError` with the code `io_error`, the message
-`Failed to write PDF: <reason>` and the `OSError` as `__cause__`. The same holds
+`Failed to write PDF: <target>: <reason>` and the `OSError` as `__cause__`. The same holds
 for `async_render_to_file()`.
 
 ```python
