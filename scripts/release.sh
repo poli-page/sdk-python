@@ -117,7 +117,7 @@ step "Lint + format + typecheck + unit and contract tests"
 # tests/test_contract.py runs the API contract cases. Use the contract version
 # CI pins, unless POLI_CONTRACT already names a contract.json.
 if [[ -z "${POLI_CONTRACT:-}" ]]; then
-	contract_sha=$(sed -n 's|.*uses: poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' .github/workflows/ci.yml | head -n 1)
+	contract_sha=$(sed -n 's|^[[:space:]]*-\{0,1\}[[:space:]]*uses:[[:space:]]*poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' .github/workflows/ci.yml | head -n 1)
 	[[ -n "$contract_sha" ]] || fail "no poli-page/api-contract pin found in .github/workflows/ci.yml"
 	POLI_CONTRACT="$(mktemp -d)/contract.json"
 	curl -fsSL "https://raw.githubusercontent.com/poli-page/api-contract/$contract_sha/contract.json" -o "$POLI_CONTRACT" \

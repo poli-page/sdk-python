@@ -146,3 +146,36 @@ def test_fails_for_a_version_that_is_not_x_y_z(contract: Contract, version: str)
     result = contract.check(version)
     assert result.returncode == 1
     assert "is not X.Y.Z" in result.stderr
+
+
+def test_ignores_a_commented_out_pin(contract: Contract) -> None:
+    old = contract.commit()
+    contract.tag("v0.12.0")
+    new = contract.commit()
+    contract.tag("v0.13.0")
+    contract.pin(new)
+    workflow = contract.sdk / ".github" / "workflows" / "ci.yml"
+    commented = f"      # uses: poli-page/api-contract@{old} # v0.12.0\n"
+    workflow.write_text(
+        workflow.read_text(encoding="utf-8").replace("      - name", commented + "      - name"),
+        encoding="utf-8",
+    )
+    result = contract.check("0.13.0")
+    assert result.returncode == 0, result.stderr
+
+
+def test_fails_when_publish_pins_another_commit(contract: Contract) -> None:
+    old = contract.commit()
+    new = contract.commit()
+    contract.tag("v0.13.0")
+    contract.pin(new)
+    (contract.sdk / ".github" / "workflows" / "publish.yml").write_text(
+        f"      - uses: poli-page/api-contract@{old} # v0.13.0\n", encoding="utf-8"
+    )
+    result = contract.check("0.13.0")
+    assert result.returncode == 1
+    assert "pin the same commit in both" in result.stderr
+    (contract.sdk / ".github" / "workflows" / "publish.yml").write_text(
+        f"      - uses: poli-page/api-contract@{new} # v0.13.0\n", encoding="utf-8"
+    )
+    assert contract.check("0.13.0").returncode == 0

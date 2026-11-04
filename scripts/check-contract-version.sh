@@ -7,7 +7,8 @@
 #
 # The SDK shares its major.minor with the Poli Page API, so a release X.Y.z
 # must pass the API contract X.Y. This reads the contract commit pinned in
-# .github/workflows/ci.yml (never its `# vX.Y.Z` comment), lists the contract
+# .github/workflows/ci.yml (never its `# vX.Y.Z` comment, never a commented-out
+# line), checks that publish.yml pins the same commit, lists the contract
 # repository's tags, and fails unless that commit carries a stable tag vX.Y.Z
 # with the release's major.minor. Patch numbers are free.
 #
@@ -29,8 +30,21 @@ if ! [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+([^0-9].*)?$ ]]; then
 fi
 release_minor="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
 
-contract_sha="$(sed -n 's|.*uses: poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' "$WORKFLOW" | head -n 1)"
+# The pinned commit of a `uses:` step line; a commented-out line does not count.
+pin_of() {
+	sed -n 's|^[[:space:]]*-\{0,1\}[[:space:]]*uses:[[:space:]]*poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' "$1" | head -n 1
+}
+
+contract_sha="$(pin_of "$WORKFLOW")"
 [ -n "$contract_sha" ] || fail "no poli-page/api-contract pin found in .github/workflows/ci.yml"
+
+# The Publish workflow runs the contract tests against its own pin: it must be the same one.
+PUBLISH="$REPO_ROOT/.github/workflows/publish.yml"
+if [ -f "$PUBLISH" ]; then
+	publish_sha="$(pin_of "$PUBLISH")"
+	[ "$publish_sha" = "$contract_sha" ] ||
+		fail "publish.yml pins the API contract ${publish_sha:-nowhere}, ci.yml pins $contract_sha: pin the same commit in both"
+fi
 
 tags="$(git ls-remote --tags "$REMOTE")" || fail "cannot list the tags of $REMOTE"
 
