@@ -104,7 +104,7 @@ render_to_file(
 )
 ```
 
-`render_to_file` streams response bytes directly to disk (bounded memory). Creates parent directories and replaces an existing file, through a temporary file renamed over the target once the PDF is complete: when the render, the download or the write fails, the target is left as it was. A file that cannot be written raises `PoliPageError` with the code `io_error` and the message `Failed to write PDF: <reason>`, the `OSError` as its `__cause__`. The async variant is `poli_page.fs.async_render_to_file`.
+`render_to_file` streams response bytes directly to disk (bounded memory). Creates parent directories and replaces an existing file, through a temporary file renamed over the target once the PDF is complete: when the render, the download or the write fails, the target is left as it was. A symlink stays a link to the replaced file, and the file keeps its permission mode (not its owner or hard links). A file that cannot be written raises `PoliPageError` with the code `io_error` and the message `Failed to write PDF: <reason>`, the `OSError` as its `__cause__`. The async variant is `poli_page.fs.async_render_to_file`.
 
 ### Try it locally — runnable demos
 
@@ -168,7 +168,7 @@ client.documents.delete(doc.document_id)
 
 The presigned URL has a 15-minute TTL. If `download_pdf()` fails with `code='DOWNLOAD_FAILED'` (HTTP 403 from S3), call `documents.get(id)` to refresh and retry. `DOWNLOAD_FAILED` is never retryable, whatever the storage status: the SDK does not retry it and `is_retryable()` is `False`.
 
-The download is bounded by the client's `timeout` (or the render call's `timeout`): `render.pdf` and `download_pdf()` bound the whole download, and `render.pdf_stream` uses it as an idle timeout, the wait for the answer and each gap between two chunks, so a large PDF read at your pace is not cut off. Past it, the error is `DOWNLOAD_FAILED` with the message `Failed to download PDF: timeout`.
+The download is bounded by the client's `timeout` (or the render call's `timeout`): `render.pdf` and `download_pdf()` bound the whole download, and `render.pdf_stream` uses it as an idle timeout, the first byte at most `timeout` after the download starts and then each gap between two chunks, so a large PDF read at your pace is not cut off. Past it, the error is `DOWNLOAD_FAILED` with the message `Failed to download PDF: timeout`.
 
 ## Authentication & environments
 

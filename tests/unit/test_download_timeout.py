@@ -32,6 +32,8 @@ class PdfServer:
     """Answers `POST /v1/render` with a descriptor and `GET /pdf` the way `mode` says.
 
     Modes: `ok`, `hang` (no answer), `trickle` (the PDF in 30 chunks, 50 ms apart),
+    `first-byte-stall` (headers after `header_delay`, then no body byte), `first-byte-late`
+    (headers after `header_delay`, the first chunk `header_delay` later, then the rest),
     `stall` (headers and one chunk, then nothing), `short` (10 of the 300 announced bytes,
     then the connection closes), `trickle-drop` (chunks 50 ms apart for 600 ms, then the
     connection closes).
@@ -39,6 +41,7 @@ class PdfServer:
 
     def __init__(self) -> None:
         self.mode = "ok"
+        self.header_delay = 0.0
         self.release = threading.Event()
         server = self
 
@@ -73,10 +76,13 @@ class PdfServer:
             self.release.wait(10)
             handler.close_connection = True
             return
+        if self.mode in ("first-byte-stall", "first-byte-late"):
+            time.sleep(self.header_delay)
         handler.send_response(200)
         handler.send_header("Content-Type", "application/pdf")
         handler.send_header("Content-Length", str(len(PDF)))
         handler.end_headers()
+        handler.wfile.flush()
         if self.mode == "ok":
             handler.wfile.write(PDF)
         elif self.mode == "trickle":
@@ -93,6 +99,17 @@ class PdfServer:
             handler.wfile.write(PDF[:10])
             handler.wfile.flush()
             handler.close_connection = True
+        elif self.mode == "first-byte-stall":
+            # Headers at `header_delay`, then no body byte.
+            self.release.wait(10)
+            handler.close_connection = True
+        elif self.mode == "first-byte-late":
+            # Headers at `header_delay`, the first chunk `header_delay` later, then the rest.
+            time.sleep(self.header_delay)
+            for i in range(0, len(PDF), 100):
+                handler.wfile.write(PDF[i : i + 100])
+                handler.wfile.flush()
+                time.sleep(0.05)
         elif self.mode == "trickle-drop":
             for i in range(0, 120, 10):
                 handler.wfile.write(PDF[i : i + 10])
@@ -270,3 +287,35 @@ def test_a_body_short_of_its_content_length_fails(
     with pytest.raises(PoliPageError) as excinfo:
         _call(flavor, server, method, timeout=5)
     _assert_network(excinfo.value)
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_a_stream_whose_first_byte_stalls_times_out(server: PdfServer, flavor: str) -> None:
+    # The headers come at once, then no body byte: the call fails at about `timeout`.
+    server.mode = "first-byte-stall"
+    started = time.perf_counter()
+    with pytest.raises(PoliPageError) as excinfo:
+        _call(flavor, server, "render.pdf_stream", timeout=0.5)
+    _assert_timeout(excinfo.value)
+    assert time.perf_counter() - started < 0.9
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_headers_and_first_byte_share_one_timeout(server: PdfServer, flavor: str) -> None:
+    # Headers after 600 ms of a 1 s timeout, then no body byte. The first byte is due 1 s after
+    # the request started, not 1 s after the headers (which would end the call at 1.6 s).
+    server.mode = "first-byte-stall"
+    server.header_delay = 0.6
+    started = time.perf_counter()
+    with pytest.raises(PoliPageError) as excinfo:
+        _call(flavor, server, "render.pdf_stream", timeout=1.0)
+    _assert_timeout(excinfo.value)
+    assert time.perf_counter() - started < 1.4
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_a_first_byte_within_the_timeout_streams(server: PdfServer, flavor: str) -> None:
+    # Headers after 300 ms, the first chunk 300 ms later: 600 ms in all, under the 1 s timeout.
+    server.mode = "first-byte-late"
+    server.header_delay = 0.3
+    assert _call(flavor, server, "render.pdf_stream", timeout=1.0) == PDF

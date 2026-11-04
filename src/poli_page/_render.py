@@ -66,8 +66,9 @@ class RenderSync:
     def pdf_stream(self, input: RenderInput) -> _PdfStreamContext:
         """Render a PDF and return a streaming context manager.
 
-        The call's `timeout`, else the client's, bounds the wait for the download's answer
-        and each gap between two chunks, not the whole download.
+        The call's `timeout`, else the client's, bounds the wait for the first byte of the
+        download, counted from its start, and each gap between two chunks, not the whole
+        download.
         """
         descriptor = self.document(input)
         return _PdfStreamContext(self._client, descriptor.presigned_pdf_url, input.get("timeout"))

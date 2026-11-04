@@ -6,10 +6,11 @@ same value as an API attempt:
 - `render.pdf` and `download_pdf()` bound the whole download, body included. httpx has no
   total timeout, so the sync client runs the download on a worker thread and stops waiting
   when the time is up; the async client wraps it in `asyncio.timeout`.
-- `render.pdf_stream` bounds the wait for the answer and each gap between two chunks (an idle
-  timeout), not the total, so a large PDF read at the caller's pace is not cut off. The
-  answer is awaited the same way as a whole download; each later read uses httpx's read
-  timeout.
+- `render.pdf_stream` bounds the wait for the first byte and each gap between two chunks (an
+  idle timeout), not the total, so a large PDF read at the caller's pace is not cut off. The
+  answer's headers and the first chunk share one budget, measured from the start of the
+  request and enforced the same way as a whole download; each later chunk is bounded by
+  httpx's read timeout.
 
 A failure is `DOWNLOAD_FAILED`: `Failed to download PDF: HTTP <status>` with the storage
 status, `Failed to download PDF: timeout` when the timeout fired (httpx's own timeout
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import itertools
 import threading
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Iterator
 from contextlib import asynccontextmanager, contextmanager
@@ -152,34 +154,57 @@ def stream_bytes(
 ) -> Generator[Iterator[bytes], None, None]:
     """Yield the chunks of `url`, with `seconds` as an idle timeout (`render.pdf_stream`)."""
     request = client.build_request("GET", url, timeout=seconds)
-    response = _open(client, request, seconds)
+    response, chunks = _open(client, request, seconds)
     try:
         if not response.is_success:
             raise _failed(response.status_code)
-        yield _iter_chunks(response)
+        yield _iter_chunks(chunks)
     finally:
         response.close()
 
 
-def _open(client: httpx.Client, request: httpx.Request, seconds: float) -> httpx.Response:
-    """Send `request` and return once the answer's headers are in, within `seconds`."""
+def _open(
+    client: httpx.Client, request: httpx.Request, seconds: float
+) -> tuple[httpx.Response, Iterator[bytes]]:
+    """Send `request` and read the first chunk of a 2xx body, all within `seconds`.
+
+    Returns the response and an iterator over its chunks, the first one included. The
+    answer's headers and the first byte share the one budget, so the first byte comes at
+    most `seconds` after the request started; each later chunk has `seconds` of its own.
+    """
+
+    def start(_abandoned: threading.Event) -> tuple[httpx.Response, Iterator[bytes]]:
+        response = client.send(request, stream=True)
+        try:
+            return response, _with_first_chunk(response)
+        except BaseException:
+            response.close()
+            raise
+
     try:
         if seconds <= 0:
-            return client.send(request, stream=True)
-        return _call_with_deadline(
-            lambda _abandoned: client.send(request, stream=True),
-            seconds,
-            discard=lambda response: response.close(),
-        )
+            return start(threading.Event())
+        return _call_with_deadline(start, seconds, discard=lambda opened: opened[0].close())
     except httpx.HTTPError as exc:
         raise _from_httpx(exc) from exc
     except _DeadlineExpired:
         raise _timed_out() from None
 
 
-def _iter_chunks(response: httpx.Response) -> Iterator[bytes]:
+def _with_first_chunk(response: httpx.Response) -> Iterator[bytes]:
+    """Read the first chunk of a 2xx body now; return every chunk, that one first."""
+    if not response.is_success:
+        return iter(())
+    chunks = response.iter_bytes()
+    first = next(chunks, None)
+    if first is None:
+        return iter(())
+    return itertools.chain((first,), chunks)
+
+
+def _iter_chunks(chunks: Iterator[bytes]) -> Iterator[bytes]:
     try:
-        yield from response.iter_bytes()
+        yield from chunks
     except httpx.HTTPError as exc:
         raise _from_httpx(exc) from exc
 
@@ -219,25 +244,35 @@ async def async_stream_bytes(
 ) -> AsyncGenerator[AsyncIterator[bytes], None]:
     """Yield the chunks of `url`, with `seconds` as an idle timeout (`render.pdf_stream`)."""
     request = client.build_request("GET", url, timeout=seconds)
-    response = await _async_open(client, request, seconds)
+    response, chunks = await _async_open(client, request, seconds)
     try:
         if not response.is_success:
             raise _failed(response.status_code)
-        yield _aiter_chunks(response)
+        yield _aiter_chunks(chunks)
     finally:
         await response.aclose()
 
 
 async def _async_open(
     client: httpx.AsyncClient, request: httpx.Request, seconds: float
-) -> httpx.Response:
+) -> tuple[httpx.Response, AsyncIterator[bytes]]:
+    """Send `request` and read the first chunk of a 2xx body, all within `seconds`."""
+
+    async def start() -> tuple[httpx.Response, AsyncIterator[bytes]]:
+        response = await client.send(request, stream=True)
+        try:
+            return response, await _async_with_first_chunk(response)
+        except BaseException:
+            await response.aclose()
+            raise
+
     try:
         if seconds <= 0:
-            return await client.send(request, stream=True)
+            return await start()
         deadline = asyncio.timeout(seconds)
         try:
             async with deadline:
-                return await client.send(request, stream=True)
+                return await start()
         except TimeoutError:
             if not deadline.expired():
                 raise
@@ -246,9 +281,29 @@ async def _async_open(
         raise _from_httpx(exc) from exc
 
 
-async def _aiter_chunks(response: httpx.Response) -> AsyncIterator[bytes]:
+async def _async_with_first_chunk(response: httpx.Response) -> AsyncIterator[bytes]:
+    """Read the first chunk of a 2xx body now; return every chunk, that one first."""
+    if not response.is_success:
+        return _achain(None, None)
+    chunks = response.aiter_bytes()
     try:
-        async for chunk in response.aiter_bytes():
+        first = await anext(chunks)
+    except StopAsyncIteration:
+        return _achain(None, None)
+    return _achain(first, chunks)
+
+
+async def _achain(first: bytes | None, rest: AsyncIterator[bytes] | None) -> AsyncIterator[bytes]:
+    if first is not None:
+        yield first
+    if rest is not None:
+        async for chunk in rest:
+            yield chunk
+
+
+async def _aiter_chunks(chunks: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+    try:
+        async for chunk in chunks:
             yield chunk
     except httpx.HTTPError as exc:
         raise _from_httpx(exc) from exc
