@@ -9,6 +9,7 @@ Mocked via respx; lives in tests/unit/.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from typing import assert_type
 
@@ -578,3 +579,96 @@ class TestStreamEdges:
                 else:
                     async with client.render.pdf_stream(PROJECT_MODE_INPUT):  # type: ignore[arg-type]
                         pass
+
+
+class TestAbandonedSyncWorker:
+    """A sync download whose caller gave up stops at its next step: before the request, after
+    the headers, or after a chunk, so it releases its connection as early as httpx allows."""
+
+    @staticmethod
+    def _client(abandoned: threading.Event | None = None) -> httpx.Client:
+        # The response hook runs once the headers are in, before any body read.
+        hooks = {"response": [lambda _response: abandoned.set()]} if abandoned else {}
+        return httpx.Client(event_hooks=hooks)
+
+    @respx.mock
+    def test_read_all_sends_nothing_once_abandoned(self) -> None:
+        from poli_page._download import _read_all
+
+        route = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        abandoned = threading.Event()
+        abandoned.set()
+        assert _read_all(self._client(), PRESIGNED_URL, 5, abandoned) == b""
+        assert route.call_count == 0
+
+    @respx.mock
+    def test_read_all_reads_no_body_when_abandoned_during_the_headers(self) -> None:
+        from poli_page._download import _read_all
+
+        body = _CountingBody()
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, stream=body))
+        abandoned = threading.Event()
+        assert _read_all(self._client(abandoned), PRESIGNED_URL, 5, abandoned) == b""
+        assert body.reads == 0
+        assert body.closed
+
+    @respx.mock
+    def test_read_all_stops_after_the_chunk_during_which_it_was_abandoned(self) -> None:
+        from poli_page._download import _read_all
+
+        abandoned = threading.Event()
+
+        class _AbandonedMidBody(httpx.SyncByteStream):
+            def __init__(self) -> None:
+                self.reads = 0
+
+            def __iter__(self) -> Iterator[bytes]:
+                for chunk in (b"first", b"second", b"third"):
+                    self.reads += 1
+                    yield chunk
+                    abandoned.set()  # the caller gives up while this chunk is read
+
+        body = _AbandonedMidBody()
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, stream=body))
+        assert _read_all(self._client(), PRESIGNED_URL, 5, abandoned) == b"first"
+        assert body.reads == 2  # the next chunk arrived, then the read stopped
+
+    @respx.mock
+    def test_start_stream_sends_nothing_once_abandoned(self) -> None:
+        from poli_page._download import _DeadlineExpired, _start_stream
+
+        route = respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+        abandoned = threading.Event()
+        abandoned.set()
+        client = self._client()
+        with pytest.raises(_DeadlineExpired):
+            _start_stream(client, client.build_request("GET", PRESIGNED_URL), abandoned)
+        assert route.call_count == 0
+
+    @respx.mock
+    def test_start_stream_closes_the_response_when_abandoned_during_the_headers(self) -> None:
+        from poli_page._download import _DeadlineExpired, _start_stream
+
+        body = _CountingBody()
+        respx.get(PRESIGNED_URL).mock(return_value=httpx.Response(200, stream=body))
+        abandoned = threading.Event()
+        client = self._client(abandoned)
+        with pytest.raises(_DeadlineExpired):
+            _start_stream(client, client.build_request("GET", PRESIGNED_URL), abandoned)
+        assert body.reads == 0
+        assert body.closed
+
+
+class _CountingBody(httpx.SyncByteStream):
+    """A PDF body that counts how many chunks were read and whether it was closed."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+        self.closed = False
+
+    def __iter__(self) -> Iterator[bytes]:
+        self.reads += 1
+        yield b"%PDF-1.4 body"
+
+    def close(self) -> None:
+        self.closed = True

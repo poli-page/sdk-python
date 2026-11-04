@@ -9,7 +9,7 @@ The `PoliPage` and `AsyncPoliPage` constructors accept keyword-only arguments. E
 
 - `api_key` — an API key of one environment of your organization (`pp_{env}_…`, see [Authentication](../authentication/)). Required at runtime; when omitted (or `None`) it falls back to `POLI_PAGE_API_KEY`, and an empty string raises `invalid_options`.
 - `base_url` — override the API endpoint. Defaults to `https://api.poli.page` (or `POLI_PAGE_BASE_URL`).
-- `timeout` — per-request timeout in seconds. Defaults to `60.0`. It also bounds the presigned-URL PDF download: the whole download for `render.pdf` and `download_pdf()`, the first byte (at most `timeout` after the download starts) and each gap between two chunks for `render.pdf_stream`.
+- `timeout` — per-request timeout in seconds. Defaults to `60.0`. It also bounds the presigned-URL PDF download: the whole download for `render.pdf` and `download_pdf()`, the first byte (at most `timeout` after the download starts) and each gap between two chunks for `render.pdf_stream`. The sync client waits for the download on a worker thread, because httpx's sync transport cannot be interrupted: after a timeout, that download can keep one pooled connection busy until its current httpx read or connect phase ends.
 - `max_retries` — maximum retry attempts for retryable errors. Defaults to `2` (three total attempts).
 - `retry_delay` — initial retry backoff in seconds. Defaults to `0.5`. Doubles each attempt.
 - `on_retry` / `on_error` — observability hooks. Sync callables; never block, never mutate requests.

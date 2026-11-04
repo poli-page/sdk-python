@@ -19,6 +19,13 @@ transport failure, a connection that closes before the announced `Content-Length
 
 A `timeout` of 0 or less sets no deadline: it goes to httpx as it is, as for an API attempt,
 and httpx decides what it means.
+
+The sync worker cannot be interrupted: httpx's sync transport has no cancellation, and the
+read timeout of a body is set once for the whole read. After the caller's deadline the
+worker stops at its next step (before the request, after the headers, after a chunk), but
+until then it keeps one pooled connection busy, until its current httpx phase ends: at most
+one per-operation `timeout` for each phase still under way (the pool wait, the connection,
+the request, a read).
 """
 
 from __future__ import annotations
@@ -134,14 +141,24 @@ def fetch_bytes(client: httpx.Client, url: str, seconds: float) -> bytes:
 def _read_all(
     client: httpx.Client, url: str, seconds: float, abandoned: threading.Event | None
 ) -> bytes:
+    """Read the whole body. Once `abandoned` is set (nobody waits for the bytes any more), stop
+    at the next step: before the request, after the headers, or after a chunk."""
+
+    def given_up() -> bool:
+        return abandoned is not None and abandoned.is_set()
+
+    if given_up():
+        return b""
     try:
         with client.stream("GET", url, timeout=seconds) as response:
+            if given_up():
+                return b""  # leaving the block releases the connection
             if not response.is_success:
                 raise _failed(response.status_code)
             chunks: list[bytes] = []
             for chunk in response.iter_bytes():
-                if abandoned is not None and abandoned.is_set():
-                    break  # nobody waits for the bytes any more: release the connection
+                if given_up():
+                    break
                 chunks.append(chunk)
             return b"".join(chunks)
     except httpx.HTTPError as exc:
@@ -173,13 +190,8 @@ def _open(
     most `seconds` after the request started; each later chunk has `seconds` of its own.
     """
 
-    def start(_abandoned: threading.Event) -> tuple[httpx.Response, Iterator[bytes]]:
-        response = client.send(request, stream=True)
-        try:
-            return response, _with_first_chunk(response)
-        except BaseException:
-            response.close()
-            raise
+    def start(abandoned: threading.Event) -> tuple[httpx.Response, Iterator[bytes]]:
+        return _start_stream(client, request, abandoned)
 
     try:
         if seconds <= 0:
@@ -189,6 +201,26 @@ def _open(
         raise _from_httpx(exc) from exc
     except _DeadlineExpired:
         raise _timed_out() from None
+
+
+def _start_stream(
+    client: httpx.Client, request: httpx.Request, abandoned: threading.Event
+) -> tuple[httpx.Response, Iterator[bytes]]:
+    """Send `request` and read the first chunk, on the worker thread.
+
+    Once the caller has given up (`abandoned`), stop before the request and again after the
+    headers, closing the response.
+    """
+    if abandoned.is_set():
+        raise _DeadlineExpired
+    response = client.send(request, stream=True)
+    try:
+        if abandoned.is_set():
+            raise _DeadlineExpired
+        return response, _with_first_chunk(response)
+    except BaseException:
+        response.close()
+        raise
 
 
 def _with_first_chunk(response: httpx.Response) -> Iterator[bytes]:

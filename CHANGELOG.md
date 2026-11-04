@@ -28,8 +28,9 @@ major.minor with the Poli Page API, so it moves from 0.11 to 0.13 (see
   from a proxy or a captive portal between the SDK and the API. Same in both clients.
 - `io_error`: `render_to_file()` and `async_render_to_file()` raise it when they cannot write
   the file (creating a parent directory, creating the temporary file, writing it or renaming it
-  into place). No status, the message `Failed to write PDF: <reason>` with the `OSError`'s own
-  text, that `OSError` as `__cause__`, never retried.
+  into place). No status, the message `Failed to write PDF: <target>: <reason>`, with the path
+  as you gave it and the `OSError`'s own text (never the temporary file's name), that
+  `OSError` as `__cause__`, never retried.
 - `error_codes.INVALID_RESPONSE` and `error_codes.IO_ERROR`.
 - `to_payload()` answers `status` 502 for `invalid_response`. The error's own `status` keeps
   the real 2xx. The payload has exactly the keys `code`, `message`, `status` and `requestId`, as
@@ -52,20 +53,28 @@ major.minor with the Poli Page API, so it moves from 0.11 to 0.13 (see
   is not a regular file (a directory, a FIFO, a device, a socket) raises `io_error` with
   `Failed to write PDF: <target>: not a regular file`, and one you cannot write raises
   `io_error` with the `PermissionError`, both before the render and without replacing it.
+- **Breaking:** `render_to_file()` and `async_render_to_file()` replace the target by a rename
+  instead of rewriting it in place. The new file is owned by the user running the SDK, not the
+  old file's owner, and any other hard link to the old file keeps the old content. The
+  permission mode is kept.
 - A symlinked target is resolved first, each link relative to its own real directory: the PDF
-  replaces the file the link points to (created if missing) and the link stays a link. A
-  replaced file keeps its permission mode. It does not keep its owner or its hard links: the
-  rename puts a new file in place, owned by the user running the SDK, and any other hard link
-  to the old file keeps the old content (it was rewritten in place before).
-- The presigned-URL download is bounded by the client's `timeout`, or the render call's own
-  `timeout` for `render.pdf` and `render.pdf_stream`. Before, httpx's per-operation timeouts
-  applied (those of the `http_client` you passed, if any), so a download that kept receiving
-  bytes slowly never timed out. For `render.pdf` and `download_pdf()`, the timeout bounds the
-  whole download; the sync client runs that download on a short-lived worker thread so that it
-  can stop waiting on time. For `render.pdf_stream` (and the file helpers), it is an idle
+  replaces the file the link points to (created if missing) and the link stays a link.
+- **Breaking:** the presigned-URL download is bounded by the client's `timeout`, or the render
+  call's own `timeout` for `render.pdf` and `render.pdf_stream`. Before, httpx's per-operation
+  timeouts applied (those of the `http_client` you passed, if any), so a download that kept
+  receiving bytes slowly never timed out. For `render.pdf` and `download_pdf()`, the timeout
+  bounds the whole download, so a download longer than `timeout` (60 s by default) that used
+  to succeed now fails: raise `timeout` for large PDFs on slow links. For `render.pdf_stream`
+  (and the file helpers), it is an idle
   timeout: the first byte comes at most `timeout` after the download request started (the
   answer's headers and the first chunk share that budget), and each later gap between two
   chunks is bounded by `timeout`, so a large PDF read at the caller's pace is not cut off.
+- The sync client runs a whole download, and the start of a stream, on a worker thread, so that
+  the call can stop waiting on time: httpx's sync transport cannot be interrupted. A sync
+  download that timed out can keep one pooled connection busy after the call has failed,
+  until its current httpx phase ends (each phase, such as the connection or a read, is bounded
+  by httpx's own per-operation `timeout`). The worker then stops at its next step and releases
+  the connection. The async client cancels the download at once.
 - A download that outlasts its timeout raises `DOWNLOAD_FAILED` with the message
   `Failed to download PDF: timeout` (was `Failed to download PDF: network error`). No status,
   not retryable. A download whose connection closes before the announced `Content-Length` is
