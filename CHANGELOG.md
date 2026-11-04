@@ -48,16 +48,23 @@ major.minor with the Poli Page API, so it moves from 0.11 to 0.13 (see
   (the render, the download or the write), the target is left as it was: an existing file keeps
   its content and a missing one is not created. The directory and the temporary file are
   prepared before the render, so a path that cannot be written costs no render, and input
-  without a `project` is refused before anything is created on disk. A replaced file gets the
-  permissions of a newly created file.
+  without a `project` is refused before anything is created on disk. An existing target that
+  cannot be opened for writing (read-only, a directory) is refused with `io_error` before the
+  render, as before, rather than replaced.
+- A symlinked target is resolved first, each link relative to its own real directory: the PDF
+  replaces the file the link points to (created if missing) and the link stays a link. A
+  replaced file keeps its permission mode. It does not keep its owner or its hard links: the
+  rename puts a new file in place, owned by the user running the SDK, and any other hard link
+  to the old file keeps the old content (it was rewritten in place before).
 - The presigned-URL download is bounded by the client's `timeout`, or the render call's own
   `timeout` for `render.pdf` and `render.pdf_stream`. Before, httpx's per-operation timeouts
   applied (those of the `http_client` you passed, if any), so a download that kept receiving
   bytes slowly never timed out. For `render.pdf` and `download_pdf()`, the timeout bounds the
   whole download; the sync client runs that download on a short-lived worker thread so that it
   can stop waiting on time. For `render.pdf_stream` (and the file helpers), it is an idle
-  timeout: the wait for the answer and each gap between two chunks, so a large PDF read at the
-  caller's pace is not cut off.
+  timeout: the first byte comes at most `timeout` after the download request started (the
+  answer's headers and the first chunk share that budget), and each later gap between two
+  chunks is bounded by `timeout`, so a large PDF read at the caller's pace is not cut off.
 - A download that outlasts its timeout raises `DOWNLOAD_FAILED` with the message
   `Failed to download PDF: timeout` (was `Failed to download PDF: network error`). No status,
   not retryable. A download whose connection closes before the announced `Content-Length` is

@@ -48,18 +48,21 @@ except PoliPageError as err:
 ```
 
 The PDF now goes to a temporary file next to the target, renamed over it once
-complete, so a failure leaves the target as it was. A replaced file is a new
-file: it gets the permissions of a newly created file, not those of the file it
-replaces.
+complete, so a failure leaves the target as it was. A symlinked target is
+resolved first, so the PDF replaces the file the link points to and the link
+stays a link. A replaced file keeps its permission mode, but it is a new file:
+it is owned by the user running the SDK, and other hard links to the old file
+keep the old content. A read-only target is still refused with `io_error`,
+before any render.
 
 ### The PDF download is bounded by `timeout`
 
 The presigned-URL download now uses the client's `timeout` (60 s by default),
 or the render call's own `timeout`. `render.pdf()` and `download_pdf()` bound
 the whole download, so raise `timeout` if your PDFs take longer than that to
-download. `render.pdf_stream()` uses it as an idle timeout, the wait for the
-answer and each gap between two chunks, and is never cut off for its total
-length. Past the timeout the error is `DOWNLOAD_FAILED` with the message
+download. `render.pdf_stream()` uses it as an idle timeout: the first byte is
+due at most `timeout` after the download starts, then each gap between two
+chunks gets `timeout`, and the stream is never cut off for its total length. Past the timeout the error is `DOWNLOAD_FAILED` with the message
 `Failed to download PDF: timeout` (was `Failed to download PDF: network error`).
 
 ### `render.pdf_stream()` raises `DOWNLOAD_FAILED` from the iterator

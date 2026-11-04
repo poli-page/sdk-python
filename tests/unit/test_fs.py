@@ -6,9 +6,11 @@ Port of sdk-node/tests/node.test.ts.
 from __future__ import annotations
 
 import os
+import stat
+import sys
 from collections.abc import Iterator
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 import httpx
 import pytest
@@ -16,6 +18,7 @@ import respx
 
 from poli_page import AsyncPoliPage, PoliPage, PoliPageError
 from poli_page.fs import _open_part, async_render_to_file, render_to_file
+from poli_page.types import RenderInput
 
 TEST_BASE_URL = "https://test.example"
 PRESIGNED_URL = "https://presigned.example/x.pdf"
@@ -203,10 +206,9 @@ class _FullDisk:
 
 
 def _fail_writes(monkeypatch: pytest.MonkeyPatch, error: OSError) -> None:
-
-    def open_part(target: Path) -> tuple[Path, object]:
-        part, file = _open_part(target)
-        return part, _FullDisk(file, error)
+    def open_part(path: Path) -> tuple[Path, Path, object]:
+        target, part, file = _open_part(path)
+        return target, part, _FullDisk(file, error)
 
     monkeypatch.setattr("poli_page.fs._open_part", open_part)
 
@@ -338,3 +340,124 @@ class TestAsyncRenderToFileFailures:
         assert excinfo.value.code == "DOWNLOAD_FAILED"
         assert not target.exists()
         assert _leftovers(tmp_path) == []
+
+
+#: The test input, typed for the calls below.
+_RENDER_INPUT = cast(RenderInput, PROJECT_MODE_INPUT)
+
+posix_only = pytest.mark.skipif(
+    sys.platform == "win32", reason="symlinks and permission modes need POSIX semantics"
+)
+
+
+def _mock_render() -> respx.Route:
+    route = respx.post(f"{TEST_BASE_URL}/v1/render").mock(return_value=_descriptor_response())
+    respx.get(PRESIGNED_URL).mock(return_value=_pdf_response())
+    return route
+
+
+class TestRenderToFileTarget:
+    """Symlinks stay links, an existing file keeps its mode, a read-only one is refused."""
+
+    @posix_only
+    @respx.mock
+    def test_a_symlink_stays_a_link_to_the_new_pdf(self, tmp_path: Path) -> None:
+        _mock_render()
+        real = tmp_path / "real.pdf"
+        real.write_bytes(b"previous PDF")
+        link = tmp_path / "link.pdf"
+        link.symlink_to("real.pdf")
+        render_to_file(
+            PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL), _RENDER_INPUT, link
+        )
+        assert link.is_symlink()
+        assert os.readlink(link) == "real.pdf"
+        assert real.read_bytes().startswith(b"%PDF")
+        assert _leftovers(tmp_path) == []
+
+    @posix_only
+    @respx.mock
+    def test_a_dangling_symlink_creates_the_file_it_names(self, tmp_path: Path) -> None:
+        _mock_render()
+        link = tmp_path / "link.pdf"
+        link.symlink_to("out/new.pdf")
+        render_to_file(
+            PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL), _RENDER_INPUT, link
+        )
+        assert link.is_symlink()
+        assert (tmp_path / "out" / "new.pdf").read_bytes().startswith(b"%PDF")
+
+    @posix_only
+    @pytest.mark.parametrize("exists", [True, False])
+    @respx.mock
+    def test_each_hop_resolves_from_the_real_directory_of_its_link(
+        self, tmp_path: Path, exists: bool
+    ) -> None:
+        # sym -> real/dir and real/dir/link -> ../a.pdf: `sym/link` is `real/a.pdf`, not
+        # `a.pdf` next to `sym` (the path as written).
+        _mock_render()
+        (tmp_path / "real" / "dir").mkdir(parents=True)
+        (tmp_path / "sym").symlink_to("real/dir")
+        (tmp_path / "real" / "dir" / "link").symlink_to("../a.pdf")
+        if exists:
+            (tmp_path / "real" / "a.pdf").write_bytes(b"previous PDF")
+        render_to_file(
+            PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL),
+            _RENDER_INPUT,
+            tmp_path / "sym" / "link",
+        )
+        assert (tmp_path / "real" / "a.pdf").read_bytes().startswith(b"%PDF")
+        assert (tmp_path / "real" / "dir" / "link").is_symlink()
+        assert not (tmp_path / "a.pdf").exists()
+
+    @posix_only
+    @respx.mock
+    def test_an_existing_file_keeps_its_mode(self, tmp_path: Path) -> None:
+        _mock_render()
+        target = tmp_path / "c.pdf"
+        target.write_bytes(b"previous PDF")
+        target.chmod(0o640)
+        render_to_file(
+            PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL), _RENDER_INPUT, target
+        )
+        assert target.read_bytes().startswith(b"%PDF")
+        assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+    @pytest.mark.skipif(
+        hasattr(os, "geteuid") and os.geteuid() == 0, reason="root can write a read-only file"
+    )
+    @respx.mock
+    def test_a_read_only_target_is_io_error_before_any_render(self, tmp_path: Path) -> None:
+        render = _mock_render()
+        target = tmp_path / "c.pdf"
+        target.write_bytes(b"previous PDF")
+        target.chmod(0o444)
+        try:
+            with pytest.raises(PoliPageError) as excinfo:
+                render_to_file(
+                    PoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL),
+                    _RENDER_INPUT,
+                    target,
+                )
+            _assert_io_error(excinfo.value)
+            assert isinstance(excinfo.value.__cause__, PermissionError)
+            assert render.call_count == 0
+            assert target.read_bytes() == b"previous PDF"
+            assert _leftovers(tmp_path) == []
+        finally:
+            target.chmod(0o644)
+
+    @posix_only
+    @respx.mock
+    async def test_async_follows_symlinks_and_keeps_the_mode(self, tmp_path: Path) -> None:
+        _mock_render()
+        real = tmp_path / "real.pdf"
+        real.write_bytes(b"previous PDF")
+        real.chmod(0o640)
+        link = tmp_path / "link.pdf"
+        link.symlink_to("real.pdf")
+        async with AsyncPoliPage(api_key="pp_sandbox_x", base_url=TEST_BASE_URL) as client:
+            await async_render_to_file(client, _RENDER_INPUT, link)
+        assert link.is_symlink()
+        assert real.read_bytes().startswith(b"%PDF")
+        assert stat.S_IMODE(real.stat().st_mode) == 0o640
