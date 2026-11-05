@@ -9,6 +9,10 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+### Fixed
+
+- A timeout never ends a wait early. The attempt timeout and the download timeout rest on httpx, `asyncio.timeout` and a thread wait, whose clocks can be coarser than `perf_counter` (`time.monotonic` ticks every 15.6 ms on Windows before Python 3.13) and fire a little before the timeout. The `timeout` error is now raised no sooner than `timeout` after the wait started, as the retry delay already was.
+
 ## [0.13.0] - 2026-11-02
 
 Conformance with the Poli Page API contract v0.13.0

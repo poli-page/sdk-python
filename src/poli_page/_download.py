@@ -17,6 +17,10 @@ status, `Failed to download PDF: timeout` when the timeout fired (httpx's own ti
 exceptions, or the deadline above), and `Failed to download PDF: network error` for any other
 transport failure, a connection that closes before the announced `Content-Length` included.
 
+A timeout never ends a wait early (`R-WAIT-FULL`): the error is raised no sooner than `timeout`
+after the wait started, measured on `perf_counter`, because the clocks httpx, `asyncio.timeout`
+and the thread wait use can be coarser and fire a little early.
+
 A `timeout` of 0 or less sets no deadline: it goes to httpx as it is, as for an API attempt,
 and httpx decides what it means.
 
@@ -34,6 +38,7 @@ import asyncio
 import contextvars
 import itertools
 import threading
+import time
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from typing import TypeVar
@@ -42,7 +47,11 @@ import httpx
 
 from poli_page._constants import MESSAGE_DOWNLOAD_FAILED_TIMEOUT
 from poli_page._errors import PoliPageError
-from poli_page._transport import download_failed_message
+from poli_page._transport import (
+    async_wait_out_timeout,
+    download_failed_message,
+    wait_out_timeout,
+)
 
 _T = TypeVar("_T")
 
@@ -58,9 +67,23 @@ def _timed_out() -> PoliPageError:
     return PoliPageError(MESSAGE_DOWNLOAD_FAILED_TIMEOUT, code=_DOWNLOAD_FAILED)
 
 
-def _from_httpx(exc: httpx.HTTPError) -> PoliPageError:
-    """An httpx timeout exception is the timeout; any other transport failure, the network one."""
-    return _timed_out() if isinstance(exc, httpx.TimeoutException) else _failed()
+def _from_httpx(exc: httpx.HTTPError, started: float, seconds: float) -> PoliPageError:
+    """An httpx timeout exception is the timeout; any other transport failure, the network one.
+
+    The timeout error waits until `seconds` after `started` (`perf_counter`), see the module
+    docstring."""
+    if not isinstance(exc, httpx.TimeoutException):
+        return _failed()
+    wait_out_timeout(started, seconds)
+    return _timed_out()
+
+
+async def _async_from_httpx(exc: httpx.HTTPError, started: float, seconds: float) -> PoliPageError:
+    """The asyncio form of `_from_httpx`."""
+    if not isinstance(exc, httpx.TimeoutException):
+        return _failed()
+    await async_wait_out_timeout(started, seconds)
+    return _timed_out()
 
 
 # ---------------------------------------------------------------------------
@@ -130,11 +153,13 @@ def fetch_bytes(client: httpx.Client, url: str, seconds: float) -> bytes:
     """Download `url` whole within `seconds` (`render.pdf`, `download_pdf()`)."""
     if seconds <= 0:
         return _read_all(client, url, seconds, None)
+    started = time.perf_counter()
     try:
         return _call_with_deadline(
             lambda abandoned: _read_all(client, url, seconds, abandoned), seconds
         )
     except _DeadlineExpired:
+        wait_out_timeout(started, seconds)
         raise _timed_out() from None
 
 
@@ -149,6 +174,7 @@ def _read_all(
 
     if given_up():
         return b""
+    started = time.perf_counter()
     try:
         with client.stream("GET", url, timeout=seconds) as response:
             if given_up():
@@ -162,7 +188,7 @@ def _read_all(
                 chunks.append(chunk)
             return b"".join(chunks)
     except httpx.HTTPError as exc:
-        raise _from_httpx(exc) from exc
+        raise _from_httpx(exc, started, seconds) from exc
 
 
 @contextmanager
@@ -175,7 +201,7 @@ def stream_bytes(
     try:
         if not response.is_success:
             raise _failed(response.status_code)
-        yield _iter_chunks(chunks)
+        yield _iter_chunks(chunks, seconds)
     finally:
         response.close()
 
@@ -193,13 +219,15 @@ def _open(
     def start(abandoned: threading.Event) -> tuple[httpx.Response, Iterator[bytes]]:
         return _start_stream(client, request, abandoned)
 
+    started = time.perf_counter()
     try:
         if seconds <= 0:
             return start(threading.Event())
         return _call_with_deadline(start, seconds, discard=lambda opened: opened[0].close())
     except httpx.HTTPError as exc:
-        raise _from_httpx(exc) from exc
+        raise _from_httpx(exc, started, seconds) from exc
     except _DeadlineExpired:
+        wait_out_timeout(started, seconds)
         raise _timed_out() from None
 
 
@@ -234,11 +262,16 @@ def _with_first_chunk(response: httpx.Response) -> Iterator[bytes]:
     return itertools.chain((first,), chunks)
 
 
-def _iter_chunks(chunks: Iterator[bytes]) -> Iterator[bytes]:
-    try:
-        yield from chunks
-    except httpx.HTTPError as exc:
-        raise _from_httpx(exc) from exc
+def _iter_chunks(chunks: Iterator[bytes], seconds: float) -> Iterator[bytes]:
+    while True:
+        started = time.perf_counter()  # each chunk has `seconds` of its own
+        try:
+            chunk = next(chunks, None)
+        except httpx.HTTPError as exc:
+            raise _from_httpx(exc, started, seconds) from exc
+        if chunk is None:
+            return
+        yield chunk
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +283,7 @@ async def async_fetch_bytes(client: httpx.AsyncClient, url: str, seconds: float)
     """Download `url` whole within `seconds` (`render.pdf`, `download_pdf()`)."""
     if seconds <= 0:
         return await _async_read_all(client, url, seconds)
+    started = time.perf_counter()
     deadline = asyncio.timeout(seconds)
     try:
         async with deadline:
@@ -257,17 +291,19 @@ async def async_fetch_bytes(client: httpx.AsyncClient, url: str, seconds: float)
     except TimeoutError:
         if not deadline.expired():
             raise
+        await async_wait_out_timeout(started, seconds)
         raise _timed_out() from None
 
 
 async def _async_read_all(client: httpx.AsyncClient, url: str, seconds: float) -> bytes:
+    started = time.perf_counter()
     try:
         async with client.stream("GET", url, timeout=seconds) as response:
             if not response.is_success:
                 raise _failed(response.status_code)
             return b"".join([chunk async for chunk in response.aiter_bytes()])
     except httpx.HTTPError as exc:
-        raise _from_httpx(exc) from exc
+        raise await _async_from_httpx(exc, started, seconds) from exc
 
 
 @asynccontextmanager
@@ -280,7 +316,7 @@ async def async_stream_bytes(
     try:
         if not response.is_success:
             raise _failed(response.status_code)
-        yield _aiter_chunks(chunks)
+        yield _aiter_chunks(chunks, seconds)
     finally:
         await response.aclose()
 
@@ -298,6 +334,7 @@ async def _async_open(
             await response.aclose()
             raise
 
+    started = time.perf_counter()
     try:
         if seconds <= 0:
             return await start()
@@ -308,9 +345,10 @@ async def _async_open(
         except TimeoutError:
             if not deadline.expired():
                 raise
+            await async_wait_out_timeout(started, seconds)
             raise _timed_out() from None
     except httpx.HTTPError as exc:
-        raise _from_httpx(exc) from exc
+        raise await _async_from_httpx(exc, started, seconds) from exc
 
 
 async def _async_with_first_chunk(response: httpx.Response) -> AsyncIterator[bytes]:
@@ -333,9 +371,13 @@ async def _achain(first: bytes | None, rest: AsyncIterator[bytes] | None) -> Asy
             yield chunk
 
 
-async def _aiter_chunks(chunks: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
-    try:
-        async for chunk in chunks:
-            yield chunk
-    except httpx.HTTPError as exc:
-        raise _from_httpx(exc) from exc
+async def _aiter_chunks(chunks: AsyncIterator[bytes], seconds: float) -> AsyncIterator[bytes]:
+    while True:
+        started = time.perf_counter()  # each chunk has `seconds` of its own
+        try:
+            chunk = await anext(chunks, None)
+        except httpx.HTTPError as exc:
+            raise await _async_from_httpx(exc, started, seconds) from exc
+        if chunk is None:
+            return
+        yield chunk

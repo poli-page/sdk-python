@@ -48,6 +48,7 @@ from poli_page._errors import (
 from poli_page._transport import (
     HttpMethod,
     async_sleep_at_least,
+    async_wait_out_timeout,
     build_headers,
     build_url,
     compute_backoff,
@@ -291,8 +292,10 @@ class AsyncPoliPage:
                 _kwargs["timeout"] = timeout
             response = await self._http_client.request(method, url, **_kwargs)
         except httpx.TimeoutException as exc:
+            attempt_timeout = timeout if timeout is not None else self.timeout
+            await async_wait_out_timeout(_t0, attempt_timeout)
             timeout_err = APITimeoutError(
-                timeout_message(timeout if timeout is not None else self.timeout),
+                timeout_message(attempt_timeout),
                 code="timeout",
             )
             timeout_err.__cause__ = exc

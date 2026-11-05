@@ -67,10 +67,10 @@ from poli_page.types import (
 )
 
 # ---------------------------------------------------------------------------
-# Contract format 1 (README of poli-page/api-contract)
+# Contract format 2 (README of poli-page/api-contract)
 # ---------------------------------------------------------------------------
 
-KNOWN_FORMAT_VERSION = 1
+KNOWN_FORMAT_VERSION = 2
 
 #: This SDK's name in `policy.cancellationSdks`.
 SDK_NAME = "python"
@@ -445,6 +445,9 @@ class _Recorder:
         self.stop_after: int | None = case.get("stopAfterRetryEvents")
         self.events: list[dict[str, Any]] = []
         self._retries = 0
+        self._call_start = 0.0
+        #: The call's duration in milliseconds, set by `stop_call`.
+        self.call_ms = 0.0
         self.kwargs: dict[str, Any] = {
             "api_key": self.api_key,
             "base_url": origin,
@@ -454,6 +457,14 @@ class _Recorder:
             "on_request": self.on_request,
             "on_retry": self.on_retry,
         }
+
+    def start_call(self) -> None:
+        """Start the call's clock, right before the method is invoked (monotonic)."""
+        self._call_start = time.perf_counter()
+
+    def stop_call(self) -> None:
+        """Stop it when the call has returned or raised, before anything is compared."""
+        self.call_ms = (time.perf_counter() - self._call_start) * 1000.0
 
     def on_request(self, event: RequestEvent) -> None:
         self.events.append({"type": "request", "attempt": event.attempt})
@@ -472,7 +483,11 @@ def _run_sync(case: Mapping[str, Any], recorder: _Recorder) -> dict[str, Any] | 
     call = cast(Mapping[str, Any], case["call"])
     try:
         with PoliPage(**recorder.kwargs) as client:
-            value = _invoke_sync(client, call["method"], call["args"])
+            recorder.start_call()
+            try:
+                value = _invoke_sync(client, call["method"], call["args"])
+            finally:
+                recorder.stop_call()
     except _StopCall:
         return None
     except ContractError:
@@ -486,7 +501,11 @@ async def _run_async(case: Mapping[str, Any], recorder: _Recorder) -> dict[str, 
     call = cast(Mapping[str, Any], case["call"])
     try:
         async with AsyncPoliPage(**recorder.kwargs) as client:
-            value = await _invoke_async(client, call["method"], call["args"])
+            recorder.start_call()
+            try:
+                value = await _invoke_async(client, call["method"], call["args"])
+            finally:
+                recorder.stop_call()
     except _StopCall:
         return None
     except ContractError:
@@ -614,6 +633,14 @@ def _run_case(case: Mapping[str, Any], flavor: str) -> None:
         raise server.errors[0]
 
     events, requests, check_result = _expected_prefix(case)
+    min_call_ms = cast(Mapping[str, Any], case["expect"]).get("minCallMs")
+    if min_call_ms is not None:
+        # N-DURATION-MS: compared in integer milliseconds, so a timer waking a fraction of a
+        # millisecond early is not a short call.
+        took = round(recorder.call_ms)
+        assert (min_call_ms if took >= min_call_ms else f"only {took} ms") == min_call_ms, (
+            "minCallMs"
+        )
     mock = server.origin
     actual_requests = _describe_requests(server.requests, requests, recorder.api_key)
     assert actual_requests == _substitute(requests, mock), "requests"
