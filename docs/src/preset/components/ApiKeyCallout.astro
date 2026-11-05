@@ -3,12 +3,11 @@ import { Aside } from '@astrojs/starlight/components';
 ---
 
 <div class="pp-api-key-callout">
-  <Aside type="note" title="API keys and environments">
-    An API key looks like <code>pp_&#123;env&#125;_…</code>, and the environment name in the key
-    decides where the render goes. <code>pp_sandbox_…</code> renders in the sandbox: documents carry
-    a watermark, do not count toward your quota, and expire 30 days after creation.
-    <code>pp_live_…</code> and the keys of environments you create on a Pro plan
-    (<code>pp_&#123;name&#125;_…</code>) render without a watermark and count toward your quota.
-    Every key targets the same API host.
+  <Aside type="note" title="Sandbox vs live keys">
+    Every API key is named after the environment it belongs to:
+    <code>pp_sandbox_…</code> hits the free sandbox environment (renders are watermarked and never billed).
+    <code>pp_live_…</code> hits production (billed). Keys of any other environment follow
+    <code>pp_&lt;env&gt;_…</code>, for example <code>pp_staging_…</code>.
+    All keys target the same endpoint.
   </Aside>
 </div>

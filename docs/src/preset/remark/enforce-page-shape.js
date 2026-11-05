@@ -1,4 +1,4 @@
-import { parseFrontmatter } from './shared.js';
+import { formatLintFailure, parseFrontmatter } from './shared.js';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { visit } from 'unist-util-visit';
 import { join, relative } from 'node:path';
@@ -136,8 +136,7 @@ export const enforcePageShape = function () {
             file.message(`[${e.rule}] ${e.message}`, { line: e.line, column: 1 });
         }
         if (errs.length > 0) {
-            file.fail(new Error(`enforce-page-shape: ${String(errs.length)} violation(s) in ${fileRel}`));
+            file.fail(new Error(formatLintFailure(`enforce-page-shape: ${String(errs.length)} violation(s) in ${fileRel}`, errs)));
         }
     };
 };
-//# sourceMappingURL=enforce-page-shape.js.map
