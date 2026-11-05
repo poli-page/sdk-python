@@ -12,4 +12,3 @@ export function getLanguage(id) {
         throw new Error(`unknown language: ${String(id)}`);
     return lang;
 }
-//# sourceMappingURL=languages.js.map

@@ -1,6 +1,6 @@
 # Vendored Starlight preset
 
-The files in this directory are vendored from the local reference repo at `sdk-docs-preset/`. They define the shared sidebar, theme, lint plugins, and Astro components used by every Poli Page SDK doc site.
+The files in this directory are vendored from the reference repo `sdk-docs-preset`, at commit `0d97ffb` (`0d97ffbf58812793088cff212aceb46e3a549f6b`). They define the shared sidebar, theme, lint plugins, and Astro components used by every Poli Page SDK and integration doc site. This site uses the preset's SDK profile (the default).
 
 **This is a copy, not a dependency.** The site does not depend on any npm package named `@poli-page/starlight-preset`. Imports use the local alias `@preset` (configured in `astro.config.mjs` and `tsconfig.json`).
 
@@ -8,9 +8,8 @@ The files in this directory are vendored from the local reference repo at `sdk-d
 
 When the upstream preset changes:
 
-1. Edit the source in `sdk-docs-preset/`.
-2. Run `npm run build` and `npm test` there to validate.
-3. Sync the relevant files back into `docs/src/preset/`. The mapping is:
+1. In `sdk-docs-preset/`, check out the new commit and run `npm ci && npm run build` (`dist/` is not committed there) and `npm test`.
+2. Sync the files into `docs/src/preset/`. The mapping is:
 
 | Source (`sdk-docs-preset/`)   | Destination (`docs/src/preset/`) |
 |-------------------------------|----------------------------------|
@@ -20,12 +19,17 @@ When the upstream preset changes:
 | `src/components/*.astro`      | `components/`                    |
 | `src/styles/poli-page.css`    | `styles/`                        |
 
-4. After syncing, run `npm run build` in `docs/` to verify nothing regressed.
+3. Make the local edit below again.
+4. Update the commit above, then run `npm run build` in `docs/` to verify nothing regressed.
 
-The same sync needs to happen for every other SDK that vendors the preset (sdk-go, sdk-python, sdk-ruby, sdk-php, sdk-rust). That's the trade-off of skipping the npm-published path.
+## Local edit
+
+The copy differs from upstream `dist/` in one way:
+
+- `theme.js`: `POLI_PAGE_CSS_PATH` is `'@preset/styles/poli-page.css'` instead of `'@poli-page/starlight-preset/styles/poli-page.css'`, so the CSS resolves through the local alias. Every SDK site makes the same edit.
 
 ## What is NOT vendored
 
-- TypeScript source files (`src/*.ts`) — we ship the compiled `dist/*.js` instead so the docs build doesn't need to recompile the preset.
-- `templates/*.mdx` — not used by this site.
-- The `poli-docs-scaffold` CLI — not invoked at site-build time.
+- TypeScript source files (`src/*.ts`), declarations (`*.d.ts`) and source maps (`*.map`): the compiled `dist/*.js` is enough for the docs build.
+- `templates/*.mdx`: not used by this site.
+- The `poli-docs-scaffold` CLI (`dist/bin/`): not invoked at site-build time.
