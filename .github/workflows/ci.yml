@@ -7,10 +7,15 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # Why: codecov-action v5 uses OIDC for tokenless uploads on public repos.
 
 jobs:
   test:
+    # id-token: write is for the Codecov OIDC upload in this job only.
+    # contents: read is restated because a job-level block replaces the
+    # workflow-level one.
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

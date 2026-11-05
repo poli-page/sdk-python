@@ -40,8 +40,7 @@ on:
           - testpypi
 
 permissions:
-  contents: write   # to create the GitHub Release
-  id-token: write   # required for PyPI Trusted Publishing (OIDC)
+  contents: read
 
 defaults:
   run:
@@ -51,6 +50,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: pypi-publish
+    permissions:
+      contents: write   # to create the GitHub Release
+      id-token: write   # required for PyPI Trusted Publishing (OIDC)
     steps:
       - uses: actions/checkout@v7
 
