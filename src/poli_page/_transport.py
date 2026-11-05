@@ -159,6 +159,22 @@ async def async_sleep_at_least(seconds: float) -> None:
         await asyncio.sleep(left)
 
 
+def wait_out_timeout(started: float, seconds: float) -> None:
+    """Hold back a timeout error until `seconds` have passed since `started` (a
+    `perf_counter` reading), so a timeout never ends a wait early (SDK specification
+    §9.4, `R-WAIT-FULL`). httpx, `asyncio.timeout` and thread waits measure their delay
+    on a clock that can be coarser than `perf_counter` (`time.monotonic` ticks every
+    15.6 ms on Windows before Python 3.13, and asyncio fires a timer up to one clock
+    tick early), so their timeout can fire a little before `seconds`. A `seconds` of 0
+    or less sets no deadline: there is nothing to wait for."""
+    sleep_at_least(started + seconds - time.perf_counter())
+
+
+async def async_wait_out_timeout(started: float, seconds: float) -> None:
+    """The asyncio form of `wait_out_timeout`."""
+    await async_sleep_at_least(started + seconds - time.perf_counter())
+
+
 # ---------------------------------------------------------------------------
 # Error-body parsing
 # ---------------------------------------------------------------------------
