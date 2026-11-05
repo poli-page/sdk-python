@@ -17,8 +17,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -54,6 +52,13 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # id-token: write is for actions/deploy-pages (OIDC) in this job only.
+    # contents and pages are restated because a job-level block replaces the
+    # workflow-level one.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
