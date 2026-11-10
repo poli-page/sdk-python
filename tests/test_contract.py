@@ -27,7 +27,7 @@ import re
 import socket
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
@@ -384,47 +384,67 @@ def _render_input(args: Sequence[Any]) -> RenderInput:
     return cast(RenderInput, value)
 
 
-def _invoke_sync(client: PoliPage, method: str, args: Sequence[Any]) -> Any:
-    """Calls `call.method` and returns its normalized value."""
+#: The normalization of a call's value, run once the call's clock has stopped.
+_Normalize = Callable[[], Any]
+
+
+def _invoke_sync(client: PoliPage, method: str, args: Sequence[Any]) -> _Normalize:
+    """Calls `call.method` and returns how to normalize its value.
+
+    The normalization (hashing the bytes, reading the descriptor) runs after the call's
+    clock has stopped, so `minCallMs` times the SDK call alone.
+    """
     if method == "render.pdf":
-        return _bytes(client.render.pdf(_render_input(args)))
+        data = client.render.pdf(_render_input(args))
+        return lambda: _bytes(data)
     if method == "render.pdfStream":
         with client.render.pdf_stream(_render_input(args)) as chunks:
-            return _bytes(b"".join(chunks))
+            streamed = b"".join(chunks)
+        return lambda: _bytes(streamed)
     if method == "render.document":
-        return _descriptor(client.render.document(_render_input(args)))
+        descriptor = client.render.document(_render_input(args))
+        return lambda: _descriptor(descriptor)
     if method == "documents.get":
-        return _descriptor(client.documents.get(_string_arg(args, 0)))
+        document = client.documents.get(_string_arg(args, 0))
+        return lambda: _descriptor(document)
     if method == "documents.preview":
-        return _preview(client.documents.preview(_string_arg(args, 0)))
+        preview = client.documents.preview(_string_arg(args, 0))
+        return lambda: _preview(preview)
     if method == "documents.thumbnails":
         options = cast("ThumbnailOptions | None", _object_arg(args, 1))
-        return _thumbnails(client.documents.thumbnails(_string_arg(args, 0), options))
+        thumbnails = client.documents.thumbnails(_string_arg(args, 0), options)
+        return lambda: _thumbnails(thumbnails)
     if method == "documents.delete":
         client.documents.delete(_string_arg(args, 0))
-        return None  # N-DELETE-NULL
+        return lambda: None  # N-DELETE-NULL
     raise ContractError(f"Unknown SDK method in the contract: {method}")
 
 
-async def _invoke_async(client: AsyncPoliPage, method: str, args: Sequence[Any]) -> Any:
-    """Calls `call.method` and returns its normalized value."""
+async def _invoke_async(client: AsyncPoliPage, method: str, args: Sequence[Any]) -> _Normalize:
+    """The asyncio form of `_invoke_sync`."""
     if method == "render.pdf":
-        return _bytes(await client.render.pdf(_render_input(args)))
+        data = await client.render.pdf(_render_input(args))
+        return lambda: _bytes(data)
     if method == "render.pdfStream":
         async with client.render.pdf_stream(_render_input(args)) as chunks:
-            return _bytes(b"".join([chunk async for chunk in chunks]))
+            streamed = b"".join([chunk async for chunk in chunks])
+        return lambda: _bytes(streamed)
     if method == "render.document":
-        return _descriptor(await client.render.document(_render_input(args)))
+        descriptor = await client.render.document(_render_input(args))
+        return lambda: _descriptor(descriptor)
     if method == "documents.get":
-        return _descriptor(await client.documents.get(_string_arg(args, 0)))
+        document = await client.documents.get(_string_arg(args, 0))
+        return lambda: _descriptor(document)
     if method == "documents.preview":
-        return _preview(await client.documents.preview(_string_arg(args, 0)))
+        preview = await client.documents.preview(_string_arg(args, 0))
+        return lambda: _preview(preview)
     if method == "documents.thumbnails":
         options = cast("ThumbnailOptions | None", _object_arg(args, 1))
-        return _thumbnails(await client.documents.thumbnails(_string_arg(args, 0), options))
+        thumbnails = await client.documents.thumbnails(_string_arg(args, 0), options)
+        return lambda: _thumbnails(thumbnails)
     if method == "documents.delete":
         await client.documents.delete(_string_arg(args, 0))
-        return None  # N-DELETE-NULL
+        return lambda: None  # N-DELETE-NULL
     raise ContractError(f"Unknown SDK method in the contract: {method}")
 
 
@@ -485,9 +505,10 @@ def _run_sync(case: Mapping[str, Any], recorder: _Recorder) -> dict[str, Any] | 
         with PoliPage(**recorder.kwargs) as client:
             recorder.start_call()
             try:
-                value = _invoke_sync(client, call["method"], call["args"])
+                normalize = _invoke_sync(client, call["method"], call["args"])
             finally:
                 recorder.stop_call()
+            value = normalize()
     except _StopCall:
         return None
     except ContractError:
@@ -503,9 +524,10 @@ async def _run_async(case: Mapping[str, Any], recorder: _Recorder) -> dict[str, 
         async with AsyncPoliPage(**recorder.kwargs) as client:
             recorder.start_call()
             try:
-                value = await _invoke_async(client, call["method"], call["args"])
+                normalize = await _invoke_async(client, call["method"], call["args"])
             finally:
                 recorder.stop_call()
+            value = normalize()
     except _StopCall:
         return None
     except ContractError:
