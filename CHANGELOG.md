@@ -9,6 +9,12 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+### Changed
+
+- **README and docs site**: the "Error handling" section and the "Errors" page name
+  `TEMPLATE_UNSAFE` (400): the template, a partial or an SVG asset holds script or another
+  injection attempt, and the error's message names the first construct found. Not retried.
+
 ### Fixed
 
 - A timeout never ends a wait early. The attempt timeout and the download timeout rest on httpx, `asyncio.timeout` and a thread wait, whose clocks can be coarser than `perf_counter` (`time.monotonic` ticks every 15.6 ms on Windows before Python 3.13) and fire a little before the timeout. The `timeout` error is now raised no sooner than `timeout` after the wait started, as the retry delay already was.
