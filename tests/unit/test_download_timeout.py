@@ -6,7 +6,8 @@ bounds the wait for the answer and each gap between two chunks. Past it the erro
 ends short of its `Content-Length` is `Failed to download PDF: network error`.
 
 The delays are short but far from the timeouts (a 50 ms gap under a 500 ms idle timeout), so
-a slow runner does not flip a result. Each case runs with both clients.
+a slow runner does not flip a result. Each case runs with both clients. The late stream answer
+needs its events in a set order, so that test drives a stub transport instead of the server.
 """
 
 from __future__ import annotations
@@ -322,29 +323,64 @@ def test_a_first_byte_within_the_timeout_streams(server: PdfServer, flavor: str)
     assert _call(flavor, server, "render.pdf_stream", timeout=1.0) == PDF
 
 
-def test_a_stream_answer_after_the_deadline_is_closed(server: PdfServer) -> None:
-    # Headers at 350 ms and the first chunk 350 ms later: each wait is under httpx's 500 ms,
-    # so the worker gets its answer, but after the 500 ms budget. The call has already failed;
-    # the late answer is closed, not leaked.
-    server.mode = "first-byte-late"
-    server.header_delay = 0.35
+class _FirstChunkOnRelease(httpx.SyncByteStream):
+    """A body whose first chunk waits for `release`: the headers come at once, the bytes late.
+
+    `reading` is set once the worker waits for that chunk.
+    """
+
+    def __init__(self) -> None:
+        self.reading = threading.Event()
+        self.release = threading.Event()
+
+    def __iter__(self) -> Iterator[bytes]:
+        self.reading.set()
+        if not self.release.wait(5):
+            raise AssertionError("the test never released the first chunk")
+        yield PDF
+
+
+def test_a_stream_answer_after_the_deadline_is_closed() -> None:
+    # The headers come at once and the first chunk only once the call has failed, so the
+    # worker gets its answer after the deadline. The late answer is closed, not leaked.
+    # A stub transport, not the local server: no httpx timeout races the deadline, and the
+    # first chunk comes when the test says, not after a sleep.
+    pdf_url = "https://storage.test/doc_1.pdf"
+    body = _FirstChunkOnRelease()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # `request=` so that `close` can tell the storage answer even when httpx closes a
+        # response as it builds it (a JSON body is read at once).
+        if request.method == "POST":
+            return httpx.Response(200, json=_descriptor(pdf_url), request=request)
+        return httpx.Response(200, stream=body, request=request)
+
     closed: list[httpx.Response] = []
     real_close = httpx.Response.close
 
     def close(response: httpx.Response) -> None:
-        closed.append(response)
+        if str(response.request.url) == pdf_url:
+            closed.append(response)
         real_close(response)
 
-    # The client stays open until the worker is done, so its late answer reaches it.
-    with PoliPage(api_key="pp_sandbox_x", base_url=server.origin, timeout=0.5) as client:
-        with pytest.raises(PoliPageError) as excinfo:
-            client.render.pdf_stream(INPUT).__enter__()  # type: ignore[arg-type]
-        _assert_timeout(excinfo.value)
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setattr(httpx.Response, "close", close)
-            workers = [t for t in threading.enumerate() if t.name == "poli-page-download"]
-            for worker in workers:
-                worker.join(5)
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    with (
+        pytest.MonkeyPatch.context() as patch,
+        PoliPage(api_key="pp_sandbox_x", timeout=0.5, http_client=http_client) as client,
+    ):
+        patch.setattr(httpx.Response, "close", close)
+        try:
+            with pytest.raises(PoliPageError) as excinfo:
+                client.render.pdf_stream(INPUT).__enter__()  # type: ignore[arg-type]
+            _assert_timeout(excinfo.value)
+            assert closed == [], "the answer was closed before it came"
+        finally:
+            body.release.set()
+        workers = [t for t in threading.enumerate() if t.name == "poli-page-download"]
+        for worker in workers:
+            worker.join(5)
         assert not any(worker.is_alive() for worker in workers)
+    # The worker was waiting for the first chunk when the call gave up: the headers had come.
+    assert body.reading.is_set()
     assert len(closed) == 1
     assert closed[0].is_closed
