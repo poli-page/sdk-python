@@ -363,8 +363,8 @@ def test_a_stream_answer_after_the_deadline_is_closed() -> None:
             closed.append(response)
         real_close(response)
 
-    http_client = httpx.Client(transport=httpx.MockTransport(handler))
     with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as http_client,
         pytest.MonkeyPatch.context() as patch,
         PoliPage(api_key="pp_sandbox_x", timeout=0.5, http_client=http_client) as client,
     ):
@@ -381,6 +381,6 @@ def test_a_stream_answer_after_the_deadline_is_closed() -> None:
             worker.join(5)
         assert not any(worker.is_alive() for worker in workers)
     # The worker was waiting for the first chunk when the call gave up: the headers had come.
-    assert body.reading.is_set()
+    assert body.reading.is_set(), "the worker never reached the first chunk before the deadline"
     assert len(closed) == 1
     assert closed[0].is_closed
