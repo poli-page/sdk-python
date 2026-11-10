@@ -9,6 +9,12 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+### Changed
+
+- **README and docs site**: the "Error handling" section and the "Errors" page name
+  `TEMPLATE_UNSAFE` (400): the template, a partial or an SVG asset holds script or another
+  injection attempt, and the error's message names the first construct found. Not retried.
+
 ## [0.13.0] - 2026-11-02
 
 Conformance with the Poli Page API contract v0.13.0

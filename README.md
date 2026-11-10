@@ -300,6 +300,8 @@ Predicate helpers are kept for cross-language parity:
 
 A 2xx answer whose body is not JSON (a proxy or a captive portal answering instead of the API) raises `InvalidResponseError`, a direct `PoliPageError` subclass: code `invalid_response`, the message `Invalid response: HTTP <status> body is not JSON`, the real 2xx as `status`. It is not retried. `err.to_payload()` returns exactly `code`, `message`, `status` and `requestId`, with `status` 502 for it (503 for `network_error`, 504 for `timeout`).
 
+A template the API refuses as unsafe raises `BadRequestError` (400) with code `TEMPLATE_UNSAFE`: the template, a partial or an SVG asset holds script or another injection attempt, and the error's message (the API's `detail`) names the first construct found. It is not retried: fix the template.
+
 For lifecycle and billing failures, route the user to actionable messages:
 
 ```python
