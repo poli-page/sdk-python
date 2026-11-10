@@ -27,7 +27,7 @@ import re
 import socket
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
@@ -67,10 +67,10 @@ from poli_page.types import (
 )
 
 # ---------------------------------------------------------------------------
-# Contract format 1 (README of poli-page/api-contract)
+# Contract format 2 (README of poli-page/api-contract)
 # ---------------------------------------------------------------------------
 
-KNOWN_FORMAT_VERSION = 1
+KNOWN_FORMAT_VERSION = 2
 
 #: This SDK's name in `policy.cancellationSdks`.
 SDK_NAME = "python"
@@ -384,47 +384,67 @@ def _render_input(args: Sequence[Any]) -> RenderInput:
     return cast(RenderInput, value)
 
 
-def _invoke_sync(client: PoliPage, method: str, args: Sequence[Any]) -> Any:
-    """Calls `call.method` and returns its normalized value."""
+#: The normalization of a call's value, run once the call's clock has stopped.
+_Normalize = Callable[[], Any]
+
+
+def _invoke_sync(client: PoliPage, method: str, args: Sequence[Any]) -> _Normalize:
+    """Calls `call.method` and returns how to normalize its value.
+
+    The normalization (hashing the bytes, reading the descriptor) runs after the call's
+    clock has stopped, so `minCallMs` times the SDK call alone.
+    """
     if method == "render.pdf":
-        return _bytes(client.render.pdf(_render_input(args)))
+        data = client.render.pdf(_render_input(args))
+        return lambda: _bytes(data)
     if method == "render.pdfStream":
         with client.render.pdf_stream(_render_input(args)) as chunks:
-            return _bytes(b"".join(chunks))
+            streamed = b"".join(chunks)
+        return lambda: _bytes(streamed)
     if method == "render.document":
-        return _descriptor(client.render.document(_render_input(args)))
+        descriptor = client.render.document(_render_input(args))
+        return lambda: _descriptor(descriptor)
     if method == "documents.get":
-        return _descriptor(client.documents.get(_string_arg(args, 0)))
+        document = client.documents.get(_string_arg(args, 0))
+        return lambda: _descriptor(document)
     if method == "documents.preview":
-        return _preview(client.documents.preview(_string_arg(args, 0)))
+        preview = client.documents.preview(_string_arg(args, 0))
+        return lambda: _preview(preview)
     if method == "documents.thumbnails":
         options = cast("ThumbnailOptions | None", _object_arg(args, 1))
-        return _thumbnails(client.documents.thumbnails(_string_arg(args, 0), options))
+        thumbnails = client.documents.thumbnails(_string_arg(args, 0), options)
+        return lambda: _thumbnails(thumbnails)
     if method == "documents.delete":
         client.documents.delete(_string_arg(args, 0))
-        return None  # N-DELETE-NULL
+        return lambda: None  # N-DELETE-NULL
     raise ContractError(f"Unknown SDK method in the contract: {method}")
 
 
-async def _invoke_async(client: AsyncPoliPage, method: str, args: Sequence[Any]) -> Any:
-    """Calls `call.method` and returns its normalized value."""
+async def _invoke_async(client: AsyncPoliPage, method: str, args: Sequence[Any]) -> _Normalize:
+    """The asyncio form of `_invoke_sync`."""
     if method == "render.pdf":
-        return _bytes(await client.render.pdf(_render_input(args)))
+        data = await client.render.pdf(_render_input(args))
+        return lambda: _bytes(data)
     if method == "render.pdfStream":
         async with client.render.pdf_stream(_render_input(args)) as chunks:
-            return _bytes(b"".join([chunk async for chunk in chunks]))
+            streamed = b"".join([chunk async for chunk in chunks])
+        return lambda: _bytes(streamed)
     if method == "render.document":
-        return _descriptor(await client.render.document(_render_input(args)))
+        descriptor = await client.render.document(_render_input(args))
+        return lambda: _descriptor(descriptor)
     if method == "documents.get":
-        return _descriptor(await client.documents.get(_string_arg(args, 0)))
+        document = await client.documents.get(_string_arg(args, 0))
+        return lambda: _descriptor(document)
     if method == "documents.preview":
-        return _preview(await client.documents.preview(_string_arg(args, 0)))
+        preview = await client.documents.preview(_string_arg(args, 0))
+        return lambda: _preview(preview)
     if method == "documents.thumbnails":
         options = cast("ThumbnailOptions | None", _object_arg(args, 1))
-        return _thumbnails(await client.documents.thumbnails(_string_arg(args, 0), options))
+        thumbnails = await client.documents.thumbnails(_string_arg(args, 0), options)
+        return lambda: _thumbnails(thumbnails)
     if method == "documents.delete":
         await client.documents.delete(_string_arg(args, 0))
-        return None  # N-DELETE-NULL
+        return lambda: None  # N-DELETE-NULL
     raise ContractError(f"Unknown SDK method in the contract: {method}")
 
 
@@ -445,6 +465,9 @@ class _Recorder:
         self.stop_after: int | None = case.get("stopAfterRetryEvents")
         self.events: list[dict[str, Any]] = []
         self._retries = 0
+        self._call_start = 0.0
+        #: The call's duration in milliseconds, set by `stop_call`.
+        self.call_ms = 0.0
         self.kwargs: dict[str, Any] = {
             "api_key": self.api_key,
             "base_url": origin,
@@ -454,6 +477,14 @@ class _Recorder:
             "on_request": self.on_request,
             "on_retry": self.on_retry,
         }
+
+    def start_call(self) -> None:
+        """Start the call's clock, right before the method is invoked (monotonic)."""
+        self._call_start = time.perf_counter()
+
+    def stop_call(self) -> None:
+        """Stop it when the call has returned or raised, before anything is compared."""
+        self.call_ms = (time.perf_counter() - self._call_start) * 1000.0
 
     def on_request(self, event: RequestEvent) -> None:
         self.events.append({"type": "request", "attempt": event.attempt})
@@ -472,7 +503,12 @@ def _run_sync(case: Mapping[str, Any], recorder: _Recorder) -> dict[str, Any] | 
     call = cast(Mapping[str, Any], case["call"])
     try:
         with PoliPage(**recorder.kwargs) as client:
-            value = _invoke_sync(client, call["method"], call["args"])
+            recorder.start_call()
+            try:
+                normalize = _invoke_sync(client, call["method"], call["args"])
+            finally:
+                recorder.stop_call()
+            value = normalize()
     except _StopCall:
         return None
     except ContractError:
@@ -486,7 +522,12 @@ async def _run_async(case: Mapping[str, Any], recorder: _Recorder) -> dict[str, 
     call = cast(Mapping[str, Any], case["call"])
     try:
         async with AsyncPoliPage(**recorder.kwargs) as client:
-            value = await _invoke_async(client, call["method"], call["args"])
+            recorder.start_call()
+            try:
+                normalize = await _invoke_async(client, call["method"], call["args"])
+            finally:
+                recorder.stop_call()
+            value = normalize()
     except _StopCall:
         return None
     except ContractError:
@@ -614,6 +655,14 @@ def _run_case(case: Mapping[str, Any], flavor: str) -> None:
         raise server.errors[0]
 
     events, requests, check_result = _expected_prefix(case)
+    min_call_ms = cast(Mapping[str, Any], case["expect"]).get("minCallMs")
+    if min_call_ms is not None:
+        # N-DURATION-MS: compared in integer milliseconds, so a timer waking a fraction of a
+        # millisecond early is not a short call.
+        took = round(recorder.call_ms)
+        assert (min_call_ms if took >= min_call_ms else f"only {took} ms") == min_call_ms, (
+            "minCallMs"
+        )
     mock = server.origin
     actual_requests = _describe_requests(server.requests, requests, recorder.api_key)
     assert actual_requests == _substitute(requests, mock), "requests"

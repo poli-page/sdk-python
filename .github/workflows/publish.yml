@@ -103,7 +103,7 @@ jobs:
 
       - name: API contract
         id: contract
-        uses: poli-page/api-contract@1f705b3ce3e15ff56e2f7b8249c1a2983af2312c # v0.13.0
+        uses: poli-page/api-contract@0ae0dd95df8706629ddcb3a27dfda2f026154bc3 # v0.15.0-dev.1
 
       - name: Unit and contract tests
         env:

@@ -53,6 +53,7 @@ from poli_page._transport import (
     parse_retry_after,
     sleep_at_least,
     timeout_message,
+    wait_out_timeout,
 )
 from poli_page._version import __version__
 
@@ -298,8 +299,10 @@ class PoliPage:
                 _kwargs["timeout"] = timeout
             response = self._http_client.request(method, url, **_kwargs)
         except httpx.TimeoutException as exc:
+            attempt_timeout = timeout if timeout is not None else self.timeout
+            wait_out_timeout(_t0, attempt_timeout)
             timeout_err = APITimeoutError(
-                timeout_message(timeout if timeout is not None else self.timeout),
+                timeout_message(attempt_timeout),
                 code="timeout",
             )
             timeout_err.__cause__ = exc
