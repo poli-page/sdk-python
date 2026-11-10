@@ -222,6 +222,9 @@ class TestStreamTimeout:
         with _sync(_later_chunk_timeout).render.pdf_stream(INPUT) as chunks:
             stream = iter(chunks)
             assert next(stream) == b"%PDF-"
+            # The caller reads at its own pace: a timeout measured from the start of the
+            # stream, not of this chunk, would already be spent and not wait at all.
+            time.sleep(TIMEOUT)
             started = time.perf_counter()
             with pytest.raises(PoliPageError) as caught:
                 next(stream)
@@ -232,6 +235,8 @@ class TestStreamTimeout:
         async with _async(_async_later_chunk_timeout).render.pdf_stream(INPUT) as chunks:
             stream = aiter(chunks)
             assert await anext(stream) == b"%PDF-"
+            # The caller reads at its own pace (see the sync test).
+            await asyncio.sleep(TIMEOUT)
             started = time.perf_counter()
             with pytest.raises(PoliPageError) as caught:
                 await anext(stream)
