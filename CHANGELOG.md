@@ -9,8 +9,21 @@ a breaking change bumps the minor version.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-17
+
+Conformance with the Poli Page API contract v0.15.0
+([poli-page/api-contract](https://github.com/poli-page/api-contract)). The SDK shares its
+major.minor with the Poli Page API, so it moves from 0.13 to 0.15; there is no 0.14 (see
+[RELEASING.md](RELEASING.md#versions)). No breaking change.
+
 ### Changed
 
+- CI pins the API contract `v0.15.0` (format 2: a case can set `expect.minCallMs`, the least
+  time the whole call must take, which `tests/test_contract.py` checks on `perf_counter`; the
+  `timeout.hang` and `download.timeout` cases use it instead of a per-request `minGapMsBefore`).
+  The contract adds the retry rule R-WAIT-FULL: no wait ends early, so a retry delay lasts at
+  least its delay and an attempt or download timeout fires no sooner than `timeout` after it
+  started (see Fixed).
 - **README and docs site**: the "Error handling" section and the "Errors" page name
   `TEMPLATE_UNSAFE` (400): the template, a partial or an SVG asset holds script or another
   injection attempt, and the error's message names the first construct found. Not retried.
